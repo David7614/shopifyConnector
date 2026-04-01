@@ -185,16 +185,6 @@ use \yii\helpers\Html;
 
         <?php echo Html::beginForm(\yii\helpers\Url::toRoute(['site/save-product-feed']), 'post') ?>
         <div class="checkbox-list">
-            <?php $stockIdsArray = $user->config->getStockIdsArray(); ?>
-            <?php if ($stocks) : ?>
-                <?php foreach ($stocks as $stock) : ?>
-                    <div class="checkbox-row">
-                        <?php echo Html::checkbox('Settings[stock_ids_array][]', in_array($stock['stock_id'], $stockIdsArray), ['class' => 'form-control', 'id' => 'stock_ids_' . $stock['stock_id'], 'value' => $stock['stock_id']]); ?>
-                        <?php echo Html::label("Pobieraj stany z: " . $stock['stock_name'], 'stock_ids_' . $stock['stock_id']); ?>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-
             <div class="checkbox-row">
                 <?php echo Html::checkbox('Settings[product_image]', $user->config->get('product_image'), ['class' => 'form-control', 'id' => 'product_image']); ?>
                 <?php echo Html::label("Zdjęcie", 'product_image'); ?>

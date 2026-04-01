@@ -20,7 +20,6 @@ use app\models\IntegrationData;
 use app\modules\shopify\models\CustomerXml;
 
 // use app\models\Product;
-// use app\modules\idosellv3\models\ApiClient;
 
 class CustomerFeed extends XmlFeed
 {
