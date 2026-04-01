@@ -1,0 +1,72 @@
+# ─── OS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── IDE ─────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+nbproject/
+.buildpath
+.project
+.settings/
+
+# ─── Node / npm (front-app) ──────────────────────────────────────────────────
+front-app/node_modules/
+front-app/.cache/
+front-app/build/
+front-app/app/build/
+front-app/public/build/
+front-app/public/_dev/
+
+# ─── Remix / Vite ────────────────────────────────────────────────────────────
+front-app/app.config.cjs
+
+# ─── Shopify CLI ─────────────────────────────────────────────────────────────
+front-app/.shopify/
+front-app/.shopify.lock
+front-app/extensions/*/dist/
+
+# ─── Prisma ──────────────────────────────────────────────────────────────────
+front-app/prisma/dev.sqlite
+front-app/prisma/dev.sqlite-journal
+front-app/database.sqlite
+
+# ─── PHP / Composer (public_html) ────────────────────────────────────────────
+public_html/vendor/
+public_html/composer.phar
+public_html/phpunit.phar
+public_html/phpunit.xml
+
+# ─── Yii2 runtime & generated assets ─────────────────────────────────────────
+public_html/runtime/
+public_html/web/assets/
+public_html/web/index-test.php
+
+# ─── XML feed output (generated files) ───────────────────────────────────────
+public_html/modules/xml_generator/src/feeds/
+
+# ─── Codeception test output ─────────────────────────────────────────────────
+public_html/tests/_output/
+public_html/tests/_support/_generated/
+
+# ─── Vagrant ─────────────────────────────────────────────────────────────────
+public_html/.vagrant/
+public_html/vagrant/nginx/log/
+
+# ─── Environment / secrets ───────────────────────────────────────────────────
+.env
+.env.*
+front-app/.env
+front-app/.env.*
+public_html/config/db.php
+public_html/config/params-local.php
+
+# ─── SQL dumps ───────────────────────────────────────────────────────────────
+public_html/*.sql
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+public_html/logs/

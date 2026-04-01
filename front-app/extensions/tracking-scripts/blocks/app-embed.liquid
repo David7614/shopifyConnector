@@ -1,0 +1,37 @@
+{% if app.metafields.tracking_scripts.smartpoint == '1' %}
+  {% if app.metafields.tracking_scripts.trackpoint != blank %}
+      <!-- Start Samba.ai script -->
+      <script async="" src="https://yottlyscript.com/script.js?tp={{ app.metafields.tracking_scripts.trackpoint }}" referrerpolicy="origin-when-cross-origin"></script>
+      <!-- End Samba.ai script -->
+
+      <!-- Start Samba.ai cart -->
+      <script>
+        var _yottlyOnload = _yottlyOnload || [];
+
+        _yottlyOnload.push(function() {
+          var products = [];
+
+          {% for item in cart.items %}
+            products.push({
+              productId: "{{ item.product_id }}",
+              amount: {{ item.quantity }},
+            });
+          {% endfor %}
+
+          diffAnalytics.cartInteraction({
+            content: products,
+          });
+        });
+      </script>
+      <!-- End Samba.ai cart -->
+  {% endif %}
+{% endif %}
+
+
+{% schema %}
+  {
+    "name": "Samba.ai Smartpoint",
+    "target": "head",
+    "settings": []
+  }
+{% endschema %}
