@@ -21,7 +21,8 @@ phpunit.phar
 
 # ─── Yii2 runtime & generated assets ─────────────────────────────────────────
 /runtime/
-/web/assets/
+/web/assets/*
+!/web/assets/.gitkeep
 /web/index-test.php
 
 # ─── XML feed output (generated files) ───────────────────────────────────────
