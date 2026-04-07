@@ -12,6 +12,7 @@ use app\modules\shopify\ApiClient;
 use Shopify\Clients\Graphql;
 use Shopify\Utils;
 use app\modules\xml_generator\src\XmlFeed;
+use app\services\FeedStorageService;
 use SimpleXMLElement;
 use Throwable;
 use stdClass;
@@ -42,6 +43,10 @@ class CustomerFeed extends XmlFeed
             return $this->processData();
         }
 
+        if (FeedStorageService::isConfigured()) {
+            return $this->generateXmlViaStorage();
+        }
+
         $file = $this->getFile(true, false);
         $temp = $this->getFile(true, true);
 
@@ -52,6 +57,95 @@ class CustomerFeed extends XmlFeed
         }
 
         return $created;
+    }
+
+    private function getStorageKey(bool $temp = false): string
+    {
+        $ext = $temp ? '.xml.tmp' : '.xml';
+        return 'customer/' . $this->_user->uuid . '/customer' . $ext;
+    }
+
+    private function generateXmlViaStorage(): int
+    {
+        $storage = FeedStorageService::create();
+        $tempKey = $this->getStorageKey(true);
+        $fileKey = $this->getStorageKey(false);
+
+        if (!$this->isFinished()) {
+            return $this->prepareCustomerXmlViaStorage($storage, $tempKey, $fileKey);
+        } elseif (!$storage->exists($tempKey)) {
+            $this->_queue->page     = 0;
+            $this->_queue->max_page = 0;
+            $this->_queue->save();
+            return $this->prepareCustomerXmlViaStorage($storage, $tempKey, $fileKey);
+        } else {
+            return $this->createCustomerXmlViaStorage($storage, $fileKey, $tempKey);
+        }
+    }
+
+    private function prepareCustomerXmlViaStorage(FeedStorageService $storage, string $tempKey, string $fileKey): int
+    {
+        $integrationDataCurrentPage = $this->_queue->page;
+        $integrationDataMaxPage     = $this->_queue->max_page;
+        $page_size                  = self::XML_PAGE_SIZE;
+
+        $query = Customers::find()->where(['user_id' => $this->_queue->getCurrentUser()->id]);
+
+        $page = $integrationDataCurrentPage;
+
+        if ($integrationDataMaxPage == 0) {
+            $total                  = $query->count();
+            $pages                  = ceil($total / $page_size);
+            $this->_queue->max_page = $pages;
+            $integrationDataMaxPage = $pages;
+            $this->_queue->page     = $page;
+            $this->_queue->save();
+        }
+
+        $res           = $query->limit($page_size)->offset($page * $page_size)->all();
+        $customers_str = '';
+
+        try {
+            foreach ($res as $customer) {
+                if (Queue::isDisallowedEmail($customer['email'])) {
+                    continue;
+                }
+                if ($customer->isCustomerValidForXml() == false) {
+                    continue;
+                }
+                $xmlEntity = CustomerXml::getEntity($customer, $this->_user);
+                if (!$xmlEntity) {
+                    continue;
+                }
+                $customers_str .= $xmlEntity;
+            }
+
+            $existing = $storage->exists($tempKey) ? $storage->get($tempKey) : '';
+            $storage->put($tempKey, $existing . $customers_str);
+        } catch (Exception $e) {
+            return self::STATUS_FAIL;
+        }
+
+        $page++;
+        $this->_queue->page = $page;
+        $this->_queue->save();
+
+        if ($page > (int) $integrationDataMaxPage) {
+            return $this->createCustomerXmlViaStorage($storage, $fileKey, $tempKey);
+        }
+
+        return self::STATUS_OK;
+    }
+
+    private function createCustomerXmlViaStorage(FeedStorageService $storage, string $fileKey, string $tempKey): int
+    {
+        $tempContent = $storage->get($tempKey);
+        $customers   = new SimpleXMLElement('<CUSTOMERS/>');
+        $customers->addChild('CUSTOMER');
+        $finalXml = str_replace('<CUSTOMER/>', $tempContent, $customers->asXML());
+        $storage->put($fileKey, $finalXml, 'application/xml');
+        $storage->delete($tempKey);
+        return self::STATUS_FINISHED;
     }
 
     /**

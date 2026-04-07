@@ -7,6 +7,7 @@ use app\models\Orders;
 use app\models\Queue;
 use app\modules\shopify\ApiClient;
 use app\modules\xml_generator\src\XmlFeed;
+use app\services\FeedStorageService;
 use SimpleXMLElement;
 use Exception;
 use app\models\IntegrationData;
@@ -34,6 +35,10 @@ class OrderFeed extends XmlFeed
             return $this->processData();
         }
 
+        if (FeedStorageService::isConfigured()) {
+            return $this->generateXmlViaStorage();
+        }
+
         $file = $this->getFile(true, false);
         $temp = $this->getFile(true, true);
 
@@ -44,6 +49,92 @@ class OrderFeed extends XmlFeed
         }
 
         return $created;
+    }
+
+    private function getStorageKey(bool $temp = false): string
+    {
+        $ext = $temp ? '.xml.tmp' : '.xml';
+        return 'order/' . $this->_user->uuid . '/order' . $ext;
+    }
+
+    private function generateXmlViaStorage(): int
+    {
+        $storage = FeedStorageService::create();
+        $tempKey = $this->getStorageKey(true);
+        $fileKey = $this->getStorageKey(false);
+
+        if (!$this->isFinished()) {
+            return $this->prepareOrderXmlViaStorage($storage, $tempKey, $fileKey);
+        } elseif (!$storage->exists($tempKey)) {
+            $this->_queue->page     = 0;
+            $this->_queue->max_page = 0;
+            $this->_queue->save();
+            return $this->prepareOrderXmlViaStorage($storage, $tempKey, $fileKey);
+        } else {
+            return $this->createOrderXmlViaStorage($storage, $fileKey, $tempKey);
+        }
+    }
+
+    private function prepareOrderXmlViaStorage(FeedStorageService $storage, string $tempKey, string $fileKey): int
+    {
+        $integrationDataCurrentPage = $this->_queue->page;
+        $integrationDataMaxPage     = $this->_queue->max_page;
+        $page_size                  = self::XML_PAGE_SIZE;
+
+        $query = Orders::find()->where(['user_id' => $this->_queue->getCurrentUser()->id]);
+
+        $page = $integrationDataCurrentPage;
+
+        if ($integrationDataMaxPage == 0) {
+            $total                  = $query->count();
+            $pages                  = ceil($total / $page_size);
+            $this->_queue->max_page = $pages;
+            $integrationDataMaxPage = $pages;
+            $this->_queue->page     = $page;
+            $this->_queue->save();
+        }
+
+        $res        = $query->limit($page_size)->offset($page * $page_size)->all();
+        $orders_str = '';
+
+        try {
+            foreach ($res as $order) {
+                if (Queue::isDisallowedEmail($order->email)) {
+                    continue;
+                }
+                $xmlEntity = OrderXml::getEntity($order, $this->_user);
+                if (!$xmlEntity) {
+                    continue;
+                }
+                $orders_str .= $xmlEntity;
+            }
+
+            $existing = $storage->exists($tempKey) ? $storage->get($tempKey) : '';
+            $storage->put($tempKey, $existing . $orders_str);
+        } catch (Exception $e) {
+            return self::STATUS_FAIL;
+        }
+
+        $page++;
+        $this->_queue->page = $page;
+        $this->_queue->save();
+
+        if ($page > (int) $integrationDataMaxPage) {
+            return $this->createOrderXmlViaStorage($storage, $fileKey, $tempKey);
+        }
+
+        return self::STATUS_OK;
+    }
+
+    private function createOrderXmlViaStorage(FeedStorageService $storage, string $fileKey, string $tempKey): int
+    {
+        $tempContent = $storage->get($tempKey);
+        $orders      = new SimpleXMLElement('<ORDERS/>');
+        $orders->addChild('ORDER');
+        $finalXml = str_replace('<ORDER/>', $tempContent, $orders->asXML());
+        $storage->put($fileKey, $finalXml, 'application/xml');
+        $storage->delete($tempKey);
+        return self::STATUS_FINISHED;
     }
 
     private function prepareOrderXml($file, $temp): int
