@@ -7,9 +7,9 @@ use yii\helpers\Url;
 /** @var string|null $error */
 ?>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h2>Administratorzy</h2>
-    <?= Html::a('← Użytkownicy', Url::toRoute(['admin/index']), ['class' => 'btn btn-secondary']) ?>
+<div style="display:flex; align-items:center; justify-content:space-between; margin:20px 0 16px;">
+    <h2 style="margin:0;">Administratorzy</h2>
+    <?= Html::a('← Użytkownicy', Url::toRoute(['admin/index']), ['class' => 'btn btn-default btn-sm']) ?>
 </div>
 
 <?php if ($error): ?>
@@ -25,8 +25,8 @@ use yii\helpers\Url;
 <div class="row">
     <div class="col-md-7">
         <h4>Lista administratorów</h4>
-        <table class="table table-bordered table-sm">
-            <thead class="thead-dark">
+        <table class="table table-bordered table-sm" style="font-size:13px;">
+            <thead style="background:#333; color:#fff;">
                 <tr>
                     <th>ID</th>
                     <th>Username</th>
@@ -37,7 +37,7 @@ use yii\helpers\Url;
             <tbody>
                 <?php foreach ($admins as $admin): ?>
                 <tr>
-                    <td><?= $admin->id ?></td>
+                    <td style="color:#999; font-size:12px;"><?= $admin->id ?></td>
                     <td><?= Html::encode($admin->username) ?></td>
                     <td><?= Html::encode($admin->email) ?></td>
                     <td>
@@ -46,12 +46,12 @@ use yii\helpers\Url;
                         <?= Html::hiddenInput('action', 'delete') ?>
                         <?= Html::hiddenInput('user_id', $admin->id) ?>
                         <?= Html::submitButton('Usuń', [
-                            'class'   => 'btn btn-sm btn-danger',
+                            'class'   => 'btn btn-xs btn-danger',
                             'onclick' => "return confirm('Usunąć administratora " . Html::encode($admin->username) . "?')",
                         ]) ?>
                         <?= Html::endForm() ?>
                         <?php else: ?>
-                        <span class="text-muted">(ty)</span>
+                        <span style="color:#aaa;">(ty)</span>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -61,9 +61,9 @@ use yii\helpers\Url;
     </div>
 
     <div class="col-md-5">
-        <div class="card mb-3">
-            <div class="card-header"><strong>Zmień hasło</strong></div>
-            <div class="card-body">
+        <div class="panel panel-default">
+            <div class="panel-heading"><strong>Zmień hasło</strong></div>
+            <div class="panel-body">
                 <?= Html::beginForm('', 'post') ?>
                 <?= Html::hiddenInput('action', 'change-password') ?>
                 <div class="form-group">
@@ -82,9 +82,9 @@ use yii\helpers\Url;
             </div>
         </div>
 
-        <div class="card">
-            <div class="card-header"><strong>Dodaj administratora</strong></div>
-            <div class="card-body">
+        <div class="panel panel-default">
+            <div class="panel-heading"><strong>Dodaj administratora</strong></div>
+            <div class="panel-body">
                 <?= Html::beginForm('', 'post') ?>
                 <?= Html::hiddenInput('action', 'add') ?>
                 <div class="form-group">

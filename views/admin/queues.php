@@ -3,149 +3,362 @@ use yii\helpers\Html;
 use yii\helpers\Url;
 
 /** @var yii\web\View $this */
-/** @var int $running */
-/** @var int $errors */
-/** @var int $pending */
+/** @var array|object $initialStates */
+/** @var array|object $collapsedSections */
 ?>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h2>Monitor kolejek</h2>
-    <div>
-        <?= Html::beginForm(Url::toRoute(['admin/prepare-queue']), 'post', ['style' => 'display:inline']) ?>
-        <?= Html::submitButton('Przygotuj kolejki', [
-            'class'   => 'btn btn-success mr-2',
-            'onclick' => 'return confirm("Przygotować kolejki dla wszystkich użytkowników?")',
-        ]) ?>
-        <?= Html::endForm() ?>
-        <?= Html::a('← Użytkownicy', Url::toRoute(['admin/index']), ['class' => 'btn btn-secondary']) ?>
-    </div>
-</div>
+<style>
+.queues-page { margin: 20px; }
+.health-bar  { display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
+.health-card { flex:1; min-width:160px; border-radius:8px; padding:16px 20px; color:#fff; }
+.health-card h3 { margin:0 0 4px; font-size:28px; font-weight:700; }
+.health-card p  { margin:0; font-size:13px; opacity:.85; }
+.hc-ok      { background: linear-gradient(135deg,#2e7d32,#43a047); }
+.hc-warn    { background: linear-gradient(135deg,#e65100,#fb8c00); }
+.hc-err     { background: linear-gradient(135deg,#b71c1c,#e53935); }
+.hc-info    { background: linear-gradient(135deg,#1565c0,#1e88e5); }
+.hc-neutral { background: linear-gradient(135deg,#546e7a,#78909c); }
 
-<?php foreach (Yii::$app->session->getAllFlashes() as $type => $messages): ?>
-    <div class="alert alert-<?= $type === 'error' ? 'danger' : $type ?>">
-        <?= implode('<br>', (array) $messages) ?>
-    </div>
-<?php endforeach; ?>
+.section-title { font-size:16px; font-weight:600; margin:24px 0 10px;
+                 padding-bottom:6px; border-bottom:2px solid #eee; }
+.section-title .badge { font-size:13px; margin-left:8px; vertical-align:middle; }
 
-<!-- Karty zdrowia -->
-<div class="row mb-4">
-    <div class="col-md-4">
-        <div class="card text-center border-primary">
-            <div class="card-body">
-                <div class="display-4 text-primary"><?= $running ?></div>
-                <div>W trakcie</div>
-            </div>
+table.q-table { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:8px; }
+table.q-table th { background:#f5f5f5; padding:7px 10px; text-align:left;
+                   border-bottom:2px solid #ddd; white-space:nowrap; }
+table.q-table td { padding:6px 10px; border-bottom:1px solid #f0f0f0; vertical-align:middle; }
+table.q-table tr:hover td { background:#fafafa; }
+
+.dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; }
+.dot-run  { background:#1e88e5; }
+.dot-err  { background:#e53935; }
+.dot-warn { background:#fb8c00; }
+.dot-ok   { background:#43a047; }
+
+.user-table    { width:100%; border-collapse:collapse; font-size:13px; }
+.user-table th { background:#f5f5f5; padding:7px 10px; border-bottom:2px solid #ddd; text-align:left; }
+.user-table td { padding:6px 10px; border-bottom:1px solid #f0f0f0; }
+.user-table tr.problem-row td { background:#fff8f8; }
+.type-chip { display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px;
+             margin:1px; background:#eee; color:#444; }
+.type-chip.ok   { background:#e8f5e9; color:#2e7d32; }
+.type-chip.err  { background:#ffebee; color:#b71c1c; }
+.type-chip.warn { background:#fff3e0; color:#e65100; }
+.type-chip.run  { background:#e3f2fd; color:#1565c0; }
+
+.qs-section { min-height: 4px; }
+.section-title { cursor: default; }
+.qs-collapse-btn { transition: transform .2s; }
+.qs-collapse-btn.collapsed { transform: rotate(-90deg); }
+.qs-spinner { display:inline-block; width:14px; height:14px; border:2px solid #ddd;
+              border-top-color:#888; border-radius:50%; animation:qs-spin .6s linear infinite;
+              vertical-align:middle; margin-right:6px; }
+@keyframes qs-spin { to { transform:rotate(360deg); } }
+
+/* ── sticky section nav ── */
+#qs-sidenav {
+    position: fixed;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    z-index: 900;
+    background: rgba(44,62,80,.92);
+    border-radius: 8px 0 0 8px;
+    padding: 6px 0;
+    box-shadow: -2px 0 12px rgba(0,0,0,.18);
+    min-width: 34px;
+    transition: min-width .2s;
+}
+#qs-sidenav:hover { min-width: 160px; }
+#qs-sidenav a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px 5px 10px;
+    color: rgba(255,255,255,.6);
+    text-decoration: none;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    transition: color .15s, background .15s;
+    border-left: 3px solid transparent;
+}
+#qs-sidenav a:hover   { color: #fff; background: rgba(255,255,255,.08); }
+#qs-sidenav a.active  { color: #fff; border-left-color: #3498db; background: rgba(52,152,219,.15); }
+#qs-sidenav a .sn-dot { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; }
+#qs-sidenav a .sn-lbl { opacity: 0; transition: opacity .2s; font-weight: 500; }
+#qs-sidenav:hover a .sn-lbl { opacity: 1; }
+</style>
+
+<div class="queues-page">
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+        <h2 style="margin:0;">Monitor kolejek</h2>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:12px; color:#999;">
+                Odświeżono: <span id="qs-last-updated">—</span>
+                <span id="qs-spinner" class="qs-spinner" style="display:none;"></span>
+            </span>
+            <?= Html::a('&larr; Użytkownicy', Url::to(['admin/index']), ['class' => 'btn btn-default btn-sm']) ?>
+            <button id="qs-refresh-all"  class="btn btn-default btn-sm">↻ Odśwież wszystko</button>
+            <button id="qs-auto-toggle" class="btn btn-default btn-sm">⏸ Pauza</button>
+            <?= Html::beginForm(Url::to(['admin/prepare-queue']), 'post', ['style' => 'display:inline']) ?>
+            <button class="btn btn-primary btn-sm" onclick="return confirm('Przygotować kolejki dla wszystkich użytkowników?')">⚙ Zaplanuj kolejki</button>
+            <?= Html::endForm() ?>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card text-center border-<?= $errors > 0 ? 'danger' : 'success' ?>">
-            <div class="card-body">
-                <div class="display-4 text-<?= $errors > 0 ? 'danger' : 'success' ?>"><?= $errors ?></div>
-                <div>Błędy</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card text-center border-secondary">
-            <div class="card-body">
-                <div class="display-4 text-secondary"><?= $pending ?></div>
-                <div>Oczekujące</div>
-            </div>
-        </div>
-    </div>
-</div>
 
-<!-- Sekcje z auto-refresh -->
-<div class="mb-2 d-flex align-items-center">
-    <label class="mr-2 mb-0">Auto-refresh:</label>
-    <select id="refresh-interval" class="form-control form-control-sm" style="width:auto">
-        <option value="0">Wyłączony</option>
-        <option value="15">15s</option>
-        <option value="30" selected>30s</option>
-        <option value="60">60s</option>
-    </select>
-</div>
+    <nav id="qs-sidenav" aria-label="Sekcje"></nav>
 
-<?php foreach (['running' => 'W trakcie', 'errors' => 'Błędy', 'recent' => 'Ostatnio wykonane', 'pending' => 'Oczekujące'] as $section => $label): ?>
-<div class="card mb-3" id="section-<?= $section ?>">
-    <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="toggleSection('<?= $section ?>')">
-        <strong><?= $label ?></strong>
-        <span class="badge badge-secondary section-count" id="count-<?= $section ?>">…</span>
-    </div>
-    <div class="card-body p-0" id="body-<?= $section ?>">
-        <div class="text-center p-3 text-muted">Ładowanie…</div>
-    </div>
+    <div id="qs-health"         class="qs-section"></div>
+    <div id="qs-running"        class="qs-section"></div>
+    <div id="qs-recent_hour"    class="qs-section"></div>
+    <div id="qs-recent_started" class="qs-section"></div>
+    <div id="qs-errors"         class="qs-section"></div>
+    <div id="qs-overdue"        class="qs-section"></div>
+    <div id="qs-users"          class="qs-section"></div>
+
 </div>
-<?php endforeach; ?>
 
 <script>
-const sectionsUrl = '<?= Url::toRoute(['admin/queues-sections']) ?>';
-const collapsed = JSON.parse(localStorage.getItem('queues_collapsed') || '{}');
+(function () {
+    const endpoint              = <?= json_encode(Url::to(['admin/queues-sections'])) ?>;
+    const saveEndpoint          = <?= json_encode(Url::to(['admin/save-queues-autorefresh'])) ?>;
+    const saveCollapsedEndpoint = <?= json_encode(Url::to(['admin/save-queues-collapsed'])) ?>;
+    const csrfToken             = <?= json_encode(Yii::$app->request->csrfToken) ?>;
+    const allSections           = ['health','running','recent_hour','recent_started','errors','overdue','users'];
+    const INTERVAL              = 30;
+    const savedStates           = <?= json_encode($initialStates) ?>;
+    const savedCollapsed        = <?= json_encode($collapsedSections) ?>;
 
-function toggleSection(section) {
-    const body = document.getElementById('body-' + section);
-    collapsed[section] = !collapsed[section];
-    body.style.display = collapsed[section] ? 'none' : '';
-    localStorage.setItem('queues_collapsed', JSON.stringify(collapsed));
-}
+    const spinner         = document.getElementById('qs-spinner');
+    const lastUpdated     = document.getElementById('qs-last-updated');
+    const globalToggleBtn = document.getElementById('qs-auto-toggle');
 
-function renderTable(rows) {
-    if (!rows.length) return '<p class="text-muted p-3">Brak</p>';
-    const statusMap = {0:'Oczekuje', 1:'W trakcie', 2:'Wykonana', 99:'Błąd', 5:'Pominięta'};
-    let html = '<table class="table table-sm table-bordered mb-0"><thead class="thead-light"><tr>'
-        + '<th>ID</th><th>Użytkownik</th><th>Typ</th><th>Status</th><th>Strona</th><th>Uruchomiona</th><th>Zakończona</th><th>Akcje</th>'
-        + '</tr></thead><tbody>';
-    rows.forEach(q => {
-        html += `<tr>
-            <td>${q.id}</td>
-            <td>${q.username}</td>
-            <td>${q.type}</td>
-            <td>${statusMap[q.status] ?? q.status}</td>
-            <td>${q.page}/${q.max_page}</td>
-            <td>${q.executed_at ?? '-'}</td>
-            <td>${q.finished_at ?? '-'}</td>
-            <td>
-                <form method="post" action="<?= Url::toRoute(['admin/reset-queue']) ?>" style="display:inline">
-                    <input type="hidden" name="_csrf" value="<?= Yii::$app->request->getCsrfToken() ?>">
-                    <input type="hidden" name="queueId" value="${q.id}">
-                    <button class="btn btn-xs btn-warning" onclick="return confirm('Reset #${q.id}?')">Reset</button>
-                </form>
-            </td>
-        </tr>`;
+    // Per-section auto-refresh state
+    const states = {};
+    allSections.forEach(s => {
+        const active = savedStates && (s in savedStates) ? savedStates[s] : true;
+        states[s] = { active, secondsLeft: INTERVAL };
     });
-    return html + '</tbody></table>';
-}
 
-function loadSection(section) {
-    fetch(sectionsUrl + '?section=' + section)
-        .then(r => r.json())
-        .then(rows => {
-            document.getElementById('body-' + section).innerHTML = renderTable(rows);
-            document.getElementById('count-' + section).textContent = rows.length;
+    // Per-section collapsed state
+    const collapsedStates = {};
+    allSections.forEach(s => {
+        collapsedStates[s] = savedCollapsed && (s in savedCollapsed) ? savedCollapsed[s] : false;
+    });
+
+    // ── collapse ──────────────────────────────────────────────────
+    function applyCollapsed(sections) {
+        sections.forEach(s => {
+            const body = document.querySelector('.qs-section-body[data-section="' + s + '"]');
+            const btn  = document.querySelector('.qs-collapse-btn[data-section="' + s + '"]');
+            const collapsed = collapsedStates[s] || false;
+            if (body) body.style.display = collapsed ? 'none' : '';
+            if (btn)  btn.classList.toggle('collapsed', collapsed);
         });
-}
-
-function loadAll() {
-    ['running', 'errors', 'recent', 'pending'].forEach(s => {
-        if (!collapsed[s]) loadSection(s);
-    });
-}
-
-// Apply collapsed state
-Object.keys(collapsed).forEach(s => {
-    const body = document.getElementById('body-' + s);
-    if (body && collapsed[s]) body.style.display = 'none';
-});
-
-loadAll();
-
-// Auto-refresh
-let refreshTimer = null;
-document.getElementById('refresh-interval').addEventListener('change', function() {
-    clearInterval(refreshTimer);
-    if (this.value > 0) {
-        refreshTimer = setInterval(loadAll, this.value * 1000);
     }
-});
-refreshTimer = setInterval(loadAll, 30000);
+
+    let saveCollapsedTimer = null;
+    function scheduleSaveCollapsed() {
+        clearTimeout(saveCollapsedTimer);
+        saveCollapsedTimer = setTimeout(() => {
+            fetch(saveCollapsedEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: '_csrf=' + encodeURIComponent(csrfToken)
+                    + '&collapsed=' + encodeURIComponent(JSON.stringify(collapsedStates)),
+            }).catch(() => {});
+        }, 600);
+    }
+
+    // ── persist ───────────────────────────────────────────────────
+    let saveTimer = null;
+    function scheduleSave() {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            const payload = {};
+            allSections.forEach(s => { payload[s] = states[s].active; });
+            fetch(saveEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: '_csrf=' + encodeURIComponent(csrfToken)
+                    + '&states=' + encodeURIComponent(JSON.stringify(payload)),
+            }).catch(() => {});
+        }, 600);
+    }
+
+    // ── DOM updaters ──────────────────────────────────────────────
+    function updateSection(s) {
+        const st = states[s];
+        const cdEl = document.querySelector('.qs-countdown[data-section="' + s + '"]');
+        if (cdEl) {
+            if (st.active) {
+                cdEl.textContent = 'za ' + st.secondsLeft + 's';
+                cdEl.style.display = '';
+            } else {
+                cdEl.textContent = '';
+                cdEl.style.display = 'none';
+            }
+        }
+        const tbEl = document.querySelector('.qs-section-toggle[data-section="' + s + '"]');
+        if (tbEl) {
+            tbEl.textContent = st.active ? '⏸' : '▶';
+            tbEl.title       = st.active ? 'Zatrzymaj auto-refresh tej sekcji' : 'Wznów auto-refresh tej sekcji';
+            tbEl.style.color = st.active ? '#888' : '#1e88e5';
+        }
+    }
+
+    function updateGlobalBtn() {
+        const anyActive = allSections.some(s => states[s].active);
+        globalToggleBtn.textContent = anyActive ? '⏸ Pauza' : '▶ Auto-refresh';
+    }
+
+    function updateAll() {
+        allSections.forEach(updateSection);
+        updateGlobalBtn();
+    }
+
+    // ── single global ticker ──────────────────────────────────────
+    setInterval(() => {
+        allSections.forEach(s => {
+            const st = states[s];
+            if (!st.active) return;
+            st.secondsLeft--;
+            if (st.secondsLeft <= 0) {
+                st.secondsLeft = INTERVAL;
+                loadSections([s]);
+            }
+        });
+        updateAll();
+    }, 1000);
+
+    // ── data loading ──────────────────────────────────────────────
+    function showSpinner() { spinner.style.display = 'inline-block'; }
+    function hideSpinner() { spinner.style.display = 'none'; }
+
+    function loadSections(sections) {
+        const names = sections || allSections;
+        const param = names.join(',');
+        showSpinner();
+
+        fetch(endpoint + '?sections=' + encodeURIComponent(param), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.sections) {
+                Object.entries(data.sections).forEach(([name, html]) => {
+                    const el = document.getElementById('qs-' + name);
+                    if (el) el.innerHTML = html;
+                    if (states[name]) states[name].secondsLeft = INTERVAL;
+                });
+            }
+            lastUpdated.textContent = new Date().toLocaleTimeString('pl-PL');
+            updateAll();
+            applyCollapsed(names);
+        })
+        .catch(err => console.error('Błąd ładowania sekcji:', err))
+        .finally(hideSpinner);
+    }
+
+    // ── events ────────────────────────────────────────────────────
+    document.addEventListener('click', function (e) {
+        const collapseBtn = e.target.closest('.qs-collapse-btn[data-section]');
+        if (collapseBtn) {
+            e.preventDefault();
+            const s = collapseBtn.dataset.section;
+            collapsedStates[s] = !collapsedStates[s];
+            applyCollapsed([s]);
+            scheduleSaveCollapsed();
+            return;
+        }
+
+        const refreshBtn = e.target.closest('.qs-refresh-btn[data-section]');
+        if (refreshBtn) {
+            e.preventDefault();
+            loadSections([refreshBtn.dataset.section]);
+            return;
+        }
+
+        const sectionToggle = e.target.closest('.qs-section-toggle[data-section]');
+        if (sectionToggle) {
+            e.preventDefault();
+            const s = sectionToggle.dataset.section;
+            states[s].active = !states[s].active;
+            if (states[s].active) states[s].secondsLeft = INTERVAL;
+            updateSection(s);
+            updateGlobalBtn();
+            scheduleSave();
+            return;
+        }
+
+        if (e.target.closest('#qs-refresh-all')) {
+            e.preventDefault();
+            loadSections(null);
+            return;
+        }
+
+        if (e.target.closest('#qs-auto-toggle')) {
+            e.preventDefault();
+            const anyActive = allSections.some(s => states[s].active);
+            allSections.forEach(s => {
+                states[s].active = !anyActive;
+                if (!anyActive) states[s].secondsLeft = INTERVAL;
+            });
+            updateAll();
+            scheduleSave();
+        }
+    });
+
+    // ── side nav ──────────────────────────────────────────────────
+    const sectionMeta = {
+        health:         { label: 'Stan systemu',       dot: '#43a047' },
+        running:        { label: 'W trakcie',          dot: '#1e88e5' },
+        recent_hour:    { label: 'Ostatnia godzina',   dot: '#43a047' },
+        recent_started: { label: 'Ostatnie 20 min',    dot: '#546e7a' },
+        errors:         { label: 'Błędy',              dot: '#e53935' },
+        overdue:        { label: 'Zaległe',            dot: '#fb8c00' },
+        users:          { label: 'Użytkownicy',        dot: '#78909c' },
+    };
+
+    const sidenav = document.getElementById('qs-sidenav');
+    allSections.forEach(s => {
+        const m   = sectionMeta[s];
+        const a   = document.createElement('a');
+        a.href    = '#qs-' + s;
+        a.dataset.section = s;
+        a.innerHTML =
+            `<span class="sn-dot" style="background:${m.dot}"></span>`
+            + `<span class="sn-lbl">${m.label}</span>`;
+        a.addEventListener('click', e => {
+            e.preventDefault();
+            document.getElementById('qs-' + s)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        sidenav.appendChild(a);
+    });
+
+    const navLinks = {};
+    sidenav.querySelectorAll('a[data-section]').forEach(a => { navLinks[a.dataset.section] = a; });
+
+    const visibleSections = new Set();
+    const observer = new IntersectionObserver(entries => {
+        entries.forEach(e => {
+            const s = e.target.id.replace('qs-', '');
+            if (e.isIntersecting) visibleSections.add(s);
+            else                  visibleSections.delete(s);
+        });
+        const active = allSections.find(s => visibleSections.has(s));
+        Object.entries(navLinks).forEach(([s, a]) => a.classList.toggle('active', s === active));
+    }, { threshold: 0.1 });
+
+    allSections.forEach(s => {
+        const el = document.getElementById('qs-' + s);
+        if (el) observer.observe(el);
+    });
+
+    // ── init ──────────────────────────────────────────────────────
+    loadSections(null);
+    updateAll();
+})();
 </script>

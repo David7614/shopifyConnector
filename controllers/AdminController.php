@@ -160,14 +160,15 @@ class AdminController extends Controller
 
     public function actionQueues()
     {
-        $running = Queue::find()->where(['integrated' => Queue::RUNNING])->count();
-        $errors  = Queue::find()->where(['integrated' => Queue::ERROR])->count();
-        $pending = Queue::find()->where(['integrated' => Queue::PENDING])->count();
+        $raw = Yii::$app->session->get('queues_autorefresh');
+        $initialStates = $raw ? json_decode($raw, true) : null;
+
+        $rawC = Yii::$app->session->get('queues_collapsed');
+        $collapsedSections = $rawC ? json_decode($rawC, true) : null;
 
         return $this->render('queues', [
-            'running' => $running,
-            'errors'  => $errors,
-            'pending' => $pending,
+            'initialStates'     => $initialStates     ?? new \stdClass(),
+            'collapsedSections' => $collapsedSections ?? new \stdClass(),
         ]);
     }
 
@@ -175,47 +176,66 @@ class AdminController extends Controller
     {
         Yii::$app->response->format = Response::FORMAT_JSON;
 
-        $section = Yii::$app->request->get('section', '');
+        $allSections  = ['health', 'running', 'recent_hour', 'recent_started', 'errors', 'overdue', 'users'];
+        $sectionsParam = Yii::$app->request->get('sections', 'all');
+        $requested = $sectionsParam === 'all'
+            ? $allSections
+            : array_values(array_intersect(explode(',', $sectionsParam), $allSections));
 
-        $data = match ($section) {
-            'running' => Queue::find()
-                ->where(['integrated' => Queue::RUNNING])
-                ->with('user')
-                ->orderBy(['executed_at' => SORT_ASC])
-                ->all(),
-            'errors'  => Queue::find()
-                ->where(['integrated' => Queue::ERROR])
-                ->with('user')
-                ->orderBy(['executed_at' => SORT_DESC])
-                ->limit(50)
-                ->all(),
-            'pending' => Queue::find()
-                ->where(['integrated' => Queue::PENDING])
-                ->with('user')
-                ->orderBy(['next_integration_date' => SORT_ASC])
-                ->limit(50)
-                ->all(),
-            'recent'  => Queue::find()
-                ->where(['integrated' => Queue::EXECUTED])
-                ->with('user')
-                ->orderBy(['finished_at' => SORT_DESC])
-                ->limit(30)
-                ->all(),
-            default   => [],
-        };
+        $now = date('Y-m-d H:i:s');
 
-        return array_map(fn($q) => [
-            'id'               => $q->id,
-            'type'             => $q->integration_type,
-            'status'           => $q->integrated,
-            'page'             => $q->page,
-            'max_page'         => $q->max_page,
-            'executed_at'      => $q->executed_at,
-            'finished_at'      => $q->finished_at,
-            'next_integration_date' => $q->next_integration_date,
-            'username'         => $q->getCurrentUser()?->username ?? '?',
-            'parameters'       => $q->getAdditionalParameters(),
-        ], $data);
+        $running = Queue::find()
+            ->where(['integrated' => Queue::RUNNING])
+            ->orderBy(['executed_at' => SORT_ASC])
+            ->all();
+
+        $errors = Queue::find()
+            ->where(['integrated' => Queue::ERROR])
+            ->orderBy(['finished_at' => SORT_DESC])
+            ->limit(100)
+            ->all();
+
+        $overdue = Queue::find()
+            ->where(['integrated' => Queue::PENDING])
+            ->andWhere(['<', 'next_integration_date', $now])
+            ->orderBy(['next_integration_date' => SORT_ASC])
+            ->all();
+
+        $recentDone = Queue::find()
+            ->where(['integrated' => Queue::EXECUTED])
+            ->andWhere(['>=', 'finished_at', date('Y-m-d H:i:s', strtotime('-24 hours'))])
+            ->orderBy(['finished_at' => SORT_DESC])
+            ->all();
+
+        $recentStarted = Queue::find()
+            ->andWhere(['>=', 'executed_at', date('Y-m-d H:i:s', strtotime('-20 minutes'))])
+            ->orderBy(['executed_at' => SORT_DESC])
+            ->all();
+
+        $users = User::find()->indexBy('id')->all();
+
+        $shared = compact('running', 'errors', 'overdue', 'recentDone', 'recentStarted', 'users', 'now');
+
+        $sections = [];
+        foreach ($requested as $section) {
+            $sections[$section] = $this->renderPartial('_queues_content', array_merge($shared, ['section' => $section]));
+        }
+
+        return ['sections' => $sections];
+    }
+
+    public function actionSaveQueuesAutorefresh()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+        Yii::$app->session->set('queues_autorefresh', Yii::$app->request->post('states'));
+        return ['ok' => true];
+    }
+
+    public function actionSaveQueuesCollapsed()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+        Yii::$app->session->set('queues_collapsed', Yii::$app->request->post('collapsed'));
+        return ['ok' => true];
     }
 
     // -------------------------------------------------------------------------

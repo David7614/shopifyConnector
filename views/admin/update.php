@@ -8,9 +8,9 @@ use app\models\IntegrationData;
 /** @var array $feedUrls */
 ?>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h2>Ustawienia — <?= Html::encode($user->username) ?></h2>
-    <?= Html::a('← Użytkownicy', Url::toRoute(['admin/index']), ['class' => 'btn btn-secondary']) ?>
+<div style="display:flex; align-items:center; justify-content:space-between; margin:20px 0 16px;">
+    <h2 style="margin:0;">Ustawienia — <?= Html::encode($user->username) ?></h2>
+    <?= Html::a('← Użytkownicy', Url::toRoute(['admin/index']), ['class' => 'btn btn-default btn-sm']) ?>
 </div>
 
 <?php foreach (Yii::$app->session->getAllFlashes() as $type => $messages): ?>
@@ -20,11 +20,11 @@ use app\models\IntegrationData;
 <?php endforeach; ?>
 
 <div class="row">
-    <!-- Ustawienia ogólne -->
+    <!-- Ustawienia synchronizacji -->
     <div class="col-md-6">
-        <div class="card mb-3">
-            <div class="card-header"><strong>Ustawienia synchronizacji</strong></div>
-            <div class="card-body">
+        <div class="panel panel-default">
+            <div class="panel-heading"><strong>Ustawienia synchronizacji</strong></div>
+            <div class="panel-body">
                 <?= Html::beginForm('', 'post') ?>
                 <div class="form-group">
                     <?= Html::label('Typ eksportu', 'export_type') ?>
@@ -46,13 +46,13 @@ use app\models\IntegrationData;
         </div>
     </div>
 
-    <!-- Feed URLs -->
+    <!-- Feed URLs + integracje -->
     <div class="col-md-6">
-        <div class="card mb-3">
-            <div class="card-header"><strong>Feed URLs</strong></div>
-            <div class="card-body p-0">
-                <table class="table table-sm mb-0">
-                    <thead class="thead-light">
+        <div class="panel panel-default">
+            <div class="panel-heading"><strong>Feed URLs</strong></div>
+            <div class="panel-body" style="padding:0;">
+                <table class="table table-sm" style="margin:0;">
+                    <thead style="background:#f5f5f5;">
                         <tr><th>Typ</th><th>URL</th><th>Rekordy w DB</th></tr>
                     </thead>
                     <tbody>
@@ -76,25 +76,25 @@ use app\models\IntegrationData;
             </div>
         </div>
 
-        <div class="card mb-3">
-            <div class="card-header"><strong>Ostatnie integracje</strong></div>
-            <div class="card-body p-0">
-                <table class="table table-sm mb-0">
-                    <thead class="thead-light">
+        <div class="panel panel-default">
+            <div class="panel-heading"><strong>Ostatnie integracje</strong></div>
+            <div class="panel-body" style="padding:0;">
+                <table class="table table-sm" style="margin:0;">
+                    <thead style="background:#f5f5f5;">
                         <tr><th>Typ</th><th>Data</th></tr>
                     </thead>
                     <tbody>
                         <tr>
                             <td>Products</td>
-                            <td><?= Html::encode(IntegrationData::getDataValue('last_products_integration_date', $user->id) ?? '-') ?></td>
+                            <td><?= Html::encode(IntegrationData::getDataValue('last_products_integration_date', $user->id) ?? '—') ?></td>
                         </tr>
                         <tr>
                             <td>Orders</td>
-                            <td><?= Html::encode(IntegrationData::getDataValue('last_orders_integration_date', $user->id) ?? '-') ?></td>
+                            <td><?= Html::encode(IntegrationData::getDataValue('last_orders_integration_date', $user->id) ?? '—') ?></td>
                         </tr>
                         <tr>
                             <td>Customers</td>
-                            <td><?= Html::encode(IntegrationData::getDataValue('last_customer_integration_date', $user->id) ?? '-') ?></td>
+                            <td><?= Html::encode(IntegrationData::getDataValue('last_customer_integration_date', $user->id) ?? '—') ?></td>
                         </tr>
                     </tbody>
                 </table>
@@ -103,6 +103,6 @@ use app\models\IntegrationData;
     </div>
 </div>
 
-<div class="mt-2">
-    <?= Html::a('Zobacz kolejki użytkownika', Url::toRoute(['admin/view', 'id' => $user->id]), ['class' => 'btn btn-info']) ?>
+<div style="margin-top:8px;">
+    <?= Html::a('Zobacz kolejki użytkownika', Url::toRoute(['admin/view', 'id' => $user->id]), ['class' => 'btn btn-default btn-sm']) ?>
 </div>

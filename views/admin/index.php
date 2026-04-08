@@ -8,11 +8,22 @@ use yii\helpers\Url;
 /** @var array $summary */
 ?>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h2>Użytkownicy</h2>
+<style>
+.fc-badge { display:inline-flex; align-items:center; gap:3px; padding:2px 6px 2px 5px;
+            border-radius:4px; font-size:11px; margin:1px; background:#eee; color:#444;
+            text-decoration:none; }
+.fc-badge:hover { filter:brightness(.93); text-decoration:none; }
+.fc-badge.has  { background:#e8f5e9; color:#2e7d32; }
+.fc-count { font-weight:600; }
+.fc-refresh { background:none; border:none; padding:0 2px; cursor:pointer; color:#aaa; font-size:13px; line-height:1; }
+.fc-refresh:hover { color:#1e88e5; }
+</style>
+
+<div style="display:flex; align-items:center; justify-content:space-between; margin:20px 0 16px;">
+    <h2 style="margin:0;">Użytkownicy</h2>
     <div>
-        <?= Html::a('Monitor kolejek', Url::toRoute(['admin/queues']), ['class' => 'btn btn-info mr-2']) ?>
-        <?= Html::a('Administratorzy', Url::toRoute(['admin/admins']), ['class' => 'btn btn-secondary']) ?>
+        <?= Html::a('Monitor kolejek', Url::toRoute(['admin/queues']), ['class' => 'btn btn-default btn-sm', 'style' => 'margin-right:4px;']) ?>
+        <?= Html::a('Administratorzy', Url::toRoute(['admin/admins']), ['class' => 'btn btn-default btn-sm']) ?>
     </div>
 </div>
 
@@ -22,16 +33,14 @@ use yii\helpers\Url;
     </div>
 <?php endforeach; ?>
 
-<table class="table table-bordered table-hover table-sm">
-    <thead class="thead-dark">
+<table class="table table-bordered table-hover" style="font-size:13px;">
+    <thead style="background:#333; color:#fff;">
         <tr>
             <th>ID</th>
             <th>Shop</th>
             <th>Aktywny</th>
             <th>Ostatnia sync.</th>
-            <th>Produkty</th>
-            <th>Klienci</th>
-            <th>Zamówienia</th>
+            <th>Feedy</th>
             <th>Błędy</th>
             <th>Akcje</th>
         </tr>
@@ -40,26 +49,35 @@ use yii\helpers\Url;
         <?php foreach ($users as $user): ?>
         <?php $s = $summary[$user->id] ?? []; ?>
         <tr>
-            <td><?= $user->id ?></td>
+            <td style="color:#999; font-size:12px;"><?= $user->id ?></td>
             <td><?= Html::encode($user->username) ?></td>
-            <td><?= $user->active
-                    ? '<span class="badge badge-success">Tak</span>'
-                    : '<span class="badge badge-secondary">Nie</span>' ?></td>
-            <td><?= Html::encode($s['lastFinished'] ?? '-') ?></td>
-            <td id="count-product-<?= $user->id ?>"><?= $s['counts']['product'] ?? 0 ?></td>
-            <td id="count-customer-<?= $user->id ?>"><?= $s['counts']['customer'] ?? 0 ?></td>
-            <td id="count-order-<?= $user->id ?>"><?= $s['counts']['order'] ?? 0 ?></td>
             <td>
-                <?php if (($s['errors'] ?? 0) > 0): ?>
-                    <span class="badge badge-danger"><?= $s['errors'] ?></span>
+                <?php if ($user->active): ?>
+                    <span style="color:#2e7d32;">&#9679;</span> <span style="color:#2e7d32;">Aktywny</span>
                 <?php else: ?>
-                    <span class="badge badge-success">0</span>
-                <?php endif; ?>
+                    <span style="color:#ccc;">&#9679;</span> <span style="color:#999;">Nieaktywny</span>
+                <?php endif ?>
+            </td>
+            <td style="font-size:12px; color:#666;"><?= Html::encode($s['lastFinished'] ?? '—') ?></td>
+            <td>
+                <div class="fc-wrap" data-user-id="<?= $user->id ?>">
+                    <a class="fc-badge <?= ($s['counts']['product']  ?? 0) > 0 ? 'has' : '' ?>">P <span class="fc-count"><?= $s['counts']['product']  ?? 0 ?></span></a>
+                    <a class="fc-badge <?= ($s['counts']['customer'] ?? 0) > 0 ? 'has' : '' ?>">K <span class="fc-count"><?= $s['counts']['customer'] ?? 0 ?></span></a>
+                    <a class="fc-badge <?= ($s['counts']['order']    ?? 0) > 0 ? 'has' : '' ?>">O <span class="fc-count"><?= $s['counts']['order']    ?? 0 ?></span></a>
+                    <button class="fc-refresh" data-id="<?= $user->id ?>" title="Odśwież liczniki">↻</button>
+                </div>
             </td>
             <td>
-                <?= Html::a('Kolejki', Url::toRoute(['admin/view', 'id' => $user->id]), ['class' => 'btn btn-sm btn-primary']) ?>
-                <?= Html::a('Ustawienia', Url::toRoute(['admin/dashboard', 'id' => $user->id]), ['class' => 'btn btn-sm btn-secondary']) ?>
-                <button class="btn btn-sm btn-outline-secondary refresh-counts" data-id="<?= $user->id ?>" title="Odśwież liczniki">↻</button>
+                <?php $errCount = $s['errors'] ?? 0; ?>
+                <?php if ($errCount > 0): ?>
+                    <span style="background:#e53935; color:#fff; padding:2px 7px; border-radius:10px; font-size:12px;"><?= $errCount ?></span>
+                <?php else: ?>
+                    <span style="color:#4caf50;">✔</span>
+                <?php endif ?>
+            </td>
+            <td>
+                <?= Html::a('Kolejki',    Url::toRoute(['admin/view',      'id' => $user->id]), ['class' => 'btn btn-xs btn-default']) ?>
+                <?= Html::a('Ustawienia', Url::toRoute(['admin/dashboard', 'id' => $user->id]), ['class' => 'btn btn-xs btn-default']) ?>
             </td>
         </tr>
         <?php endforeach; ?>
@@ -67,18 +85,35 @@ use yii\helpers\Url;
 </table>
 
 <script>
-document.querySelectorAll('.refresh-counts').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const id = this.dataset.id;
-        this.disabled = true;
-        fetch('<?= Url::toRoute(['admin/refresh-feed-counts']) ?>?id=' + id)
+(function () {
+    const endpoint  = <?= json_encode(Url::toRoute(['admin/refresh-feed-counts'])) ?>;
+    const csrfToken = <?= json_encode(Yii::$app->request->csrfToken) ?>;
+
+    function refresh(btn) {
+        const id   = btn.dataset.id;
+        const wrap = btn.closest('.fc-wrap');
+        btn.textContent = '…';
+        btn.disabled    = true;
+
+        fetch(endpoint + '?id=' + encodeURIComponent(id))
             .then(r => r.json())
             .then(data => {
-                document.getElementById('count-product-'  + id).textContent = data.product;
-                document.getElementById('count-customer-' + id).textContent = data.customer;
-                document.getElementById('count-order-'    + id).textContent = data.order;
-                this.disabled = false;
-            });
+                const badges = wrap.querySelectorAll('.fc-badge');
+                const vals   = [data.product, data.customer, data.order];
+                badges.forEach((b, i) => {
+                    const n = vals[i] ?? 0;
+                    b.querySelector('.fc-count').textContent = n;
+                    b.classList.toggle('has', n > 0);
+                });
+                btn.textContent = '↻';
+                btn.disabled    = false;
+            })
+            .catch(() => { btn.textContent = '↻'; btn.disabled = false; });
+    }
+
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.fc-refresh');
+        if (btn) { e.preventDefault(); refresh(btn); }
     });
-});
+})();
 </script>
