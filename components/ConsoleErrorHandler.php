@@ -14,7 +14,7 @@ class ConsoleErrorHandler extends \yii\console\ErrorHandler
     public function handleError($code, $message, $file, $line): bool
     {
         if ($code === E_DEPRECATED || $code === E_USER_DEPRECATED) {
-            return false;
+            return true; // handled (suppressed), don't pass to PHP default handler
         }
 
         return parent::handleError($code, $message, $file, $line);

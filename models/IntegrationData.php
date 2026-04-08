@@ -141,8 +141,6 @@ class IntegrationData extends \yii\db\ActiveRecord
             }    
         }
 
-        echo "NOO".PHP_EOL;
-
         $data = new self();
         $data->customer_id = $customer_id;
         $data->task = $key;
