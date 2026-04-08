@@ -28,6 +28,36 @@ class XmlGeneratorService
         return $queue;
     }
 
+    public static function loopQueue(string $type, array $config = [], int $maxSeconds = 540): int
+    {
+        $start = time();
+        $iterations = 0;
+
+        echo "[{$type}] Loop started, will run for up to {$maxSeconds}s" . PHP_EOL;
+
+        while ((time() - $start) < $maxSeconds) {
+            $elapsed = time() - $start;
+            echo "[{$type}] --- iteration #{$iterations} at {$elapsed}s ---" . PHP_EOL;
+
+            $result = self::executeQueue($type, $config);
+
+            $iterations++;
+
+            if ($result === ExitCode::ERR) {
+                echo "[{$type}] Queue error — stopping loop" . PHP_EOL;
+                break;
+            }
+
+            // brief pause to avoid hammering DB between iterations
+            sleep(1);
+        }
+
+        $total = time() - $start;
+        echo "[{$type}] Loop finished after {$total}s, {$iterations} iteration(s)" . PHP_EOL;
+
+        return ExitCode::OK;
+    }
+
     public static function executeQueue(string $type, array $config = [])
     {
         if (!isset($config['forceId'])) {

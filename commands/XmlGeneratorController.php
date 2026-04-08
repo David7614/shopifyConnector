@@ -38,7 +38,7 @@ class XmlGeneratorController extends Controller
     public function actionGenerateCustomers($forceId = 0)
     {
         return XmlGeneratorService::executeQueue(
-            XmlFeed::CUSTOMER, 
+            XmlFeed::CUSTOMER,
             [
                 'shop_type' => 'shopify',
                 "forceId" => $forceId
@@ -49,11 +49,26 @@ class XmlGeneratorController extends Controller
     public function actionGenerateOrders($forceId = 0)
     {
         return XmlGeneratorService::executeQueue(
-            XmlFeed::ORDER, 
+            XmlFeed::ORDER,
             [
                 'shop_type' => 'shopify',
                 "forceId" => $forceId
             ]
         );
+    }
+
+    public function actionLoopProducts()
+    {
+        return XmlGeneratorService::loopQueue(XmlFeed::PRODUCT, ['shop_type' => 'shopify']);
+    }
+
+    public function actionLoopCustomers()
+    {
+        return XmlGeneratorService::loopQueue(XmlFeed::CUSTOMER, ['shop_type' => 'shopify']);
+    }
+
+    public function actionLoopOrders()
+    {
+        return XmlGeneratorService::loopQueue(XmlFeed::ORDER, ['shop_type' => 'shopify']);
     }
 }
