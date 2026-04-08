@@ -26,7 +26,9 @@ $config = [
             ],
         ],
         'db' => $db,
-        
+        'errorHandler' => [
+            'class' => \app\components\ConsoleErrorHandler::class,
+        ],
     ],
     'params' => $params,
     /*
