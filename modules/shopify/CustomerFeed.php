@@ -254,6 +254,7 @@ class CustomerFeed extends XmlFeed
 
             return $result['data']['customersCount']['count'];
         } catch (Exception $e) {
+            echo "[CustomerFeed] getAllItemsCount API error: " . $e->getMessage() . PHP_EOL;
             return null;
         }
     }
@@ -468,6 +469,7 @@ class CustomerFeed extends XmlFeed
 
             return ['status' => 'success', 'paginationInfo' => $pageInfo, 'customers' => $items];
         } catch (Exception $e) {
+            echo "[CustomerFeed] fetchItems API error: " . $e->getMessage() . PHP_EOL;
             return ['status' => 'fail', 'message' => $e->getMessage()];
         }
     }
@@ -519,11 +521,14 @@ class CustomerFeed extends XmlFeed
     private function processData()
     {
         $session = $this->_user->getSession();
-        
+
         if (!$session) {
+            echo "[CustomerFeed] No session for user {$this->_user->username}" . PHP_EOL;
             return self::STATUS_FAIL;
         }
-        
+
+        echo "[CustomerFeed] Session found: shop={$session->shop}" . PHP_EOL;
+
         $this->client = ApiClient::getClient($session);
 
         $this->checkExportType();
@@ -531,17 +536,25 @@ class CustomerFeed extends XmlFeed
         $checkStatus = $this->checkQueueConstraints();
 
         if (!$checkStatus) {
+            echo "[CustomerFeed] checkQueueConstraints failed — API count returned null (connection error?)" . PHP_EOL;
             return self::STATUS_FAIL;
         }
+
+        echo "[CustomerFeed] Fetching items (page={$this->_queue->page}, max={$this->_queue->max_page})..." . PHP_EOL;
 
         $fetchResult = $this->fetchItems();
 
         if ($fetchResult['status'] === 'fail') {
+            echo "[CustomerFeed] fetchItems failed: " . ($fetchResult['message'] ?? 'unknown error') . PHP_EOL;
             return self::STATUS_FAIL;
         }
 
+        $count = count($fetchResult['customers'] ?? []);
+        echo "[CustomerFeed] Fetched {$count} customers, hasNextPage=" . json_encode($fetchResult['paginationInfo']['hasNextPage'] ?? null) . PHP_EOL;
+
         // if empty result == done
         if (empty($fetchResult['customers'])) {
+            echo "[CustomerFeed] Empty result — marking finished" . PHP_EOL;
             $this->_queue->max_page = $this->_queue->page;
             $this->_queue->save();
             IntegrationData::setLastCustomerIntegrationDate(date('Y-m-d'), $this->_user->id);
@@ -551,30 +564,38 @@ class CustomerFeed extends XmlFeed
 
         // if out of scope then finish
         if ($this->_queue->page >= $this->_queue->max_page) {
+            echo "[CustomerFeed] Page out of scope — marking finished" . PHP_EOL;
             IntegrationData::setLastCustomerIntegrationDate(date('Y-m-d'), $this->_user->id);
             IntegrationData::setData('INITIAL_CUSTOMERS_DONE', "1", $this->_user->id);
-            // IntegrationData::setIsNew('CUSTOMER', 0, $this->_user->id);
             return self::STATUS_FINISHED;
         }
 
         try {
+            $saved = 0;
+            $skipped = 0;
             foreach ($fetchResult['customers'] as $customer) {
                 $isValid = $this->validateCustomer($customer);
 
                 if (!$isValid) {
+                    $skipped++;
                     continue;
                 }
 
-                $customerModel = new Customer($customer, $this->_user); 
+                $customerModel = new Customer($customer, $this->_user);
 
                 if (!$customerModel->prepareFromApi()) {
+                    echo "[CustomerFeed] Failed to save customer — aborting" . PHP_EOL;
                     $this->_queue->setErrorStatus('Błąd zapisu klienta');
                     return self::STATUS_FAIL;
                 }
+                $saved++;
             }
+
+            echo "[CustomerFeed] Saved={$saved}, skipped(no consent)={$skipped}" . PHP_EOL;
 
             // if there is no next page then finish
             if ($fetchResult['paginationInfo']['hasNextPage'] === false) {
+                echo "[CustomerFeed] No next page — marking finished" . PHP_EOL;
                 $this->_queue->max_page = $this->_queue->page;
                 $this->_queue->save();
                 IntegrationData::setLastCustomerIntegrationDate(date('Y-m-d'), $this->_user->id);
@@ -585,6 +606,7 @@ class CustomerFeed extends XmlFeed
             $this->_queue->increasePage();
             return self::STATUS_OK;
         } catch (Exception $e) {
+            echo "[CustomerFeed] EXCEPTION in save loop: " . $e->getMessage() . PHP_EOL;
             return self::STATUS_FAIL;
         }
     }

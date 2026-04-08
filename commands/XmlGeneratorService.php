@@ -37,28 +37,29 @@ class XmlGeneratorService
         $queue = self::getLastestQueue($type, $config);
 
         if ($queue == null) {
+            echo "[{$type}] No queue found" . PHP_EOL;
             return ExitCode::OK;
         }
 
-        echo '>--- executeQueue - T1' . PHP_EOL;
+        echo "[{$type}] Queue #{$queue->id} status={$queue->integrated} page={$queue->page}/{$queue->max_page}" . PHP_EOL;
 
         if ($queue->integrated === Queue::RUNNING && $config['forceId'] === 0) {
-            // prevent double run
-
             $currentDate = new DateTime(date('Y-m-d H:i:s'));
             $excutedDate = new DateTime($queue->executed_at);
-
             $diffInSeconds = $currentDate->getTimestamp() - $excutedDate->getTimestamp();
 
+            echo "[{$type}] Already RUNNING for {$diffInSeconds}s — skipping" . PHP_EOL;
+
             if ($diffInSeconds > 3600) {
+                echo "[{$type}] Stale RUNNING (>1h), resetting to PENDING" . PHP_EOL;
                 $queue->setPendingStatus();
-                return ExitCode::OK;
             }
 
             return ExitCode::OK;
         }
 
         if (!$queue->checkQueueConstraints()) {
+            echo "[{$type}] checkQueueConstraints failed — job disabled" . PHP_EOL;
             $queue->setErrorStatus('job disabled');
             return ExitCode::OK;
         }
@@ -68,9 +69,12 @@ class XmlGeneratorService
         $user = $queue->getCurrentUser();
 
         if (!$user) {
+            echo "[{$type}] User not found for queue #{$queue->id} — deleting queue" . PHP_EOL;
             $queue->delete();
             return ExitCode::ERR;
         }
+
+        echo "[{$type}] User: {$user->username} (shop_type={$user->shop_type})" . PHP_EOL;
 
         $xmlGenerator = new XmlFeed();
         $xmlGenerator->setType($type);
@@ -84,9 +88,13 @@ class XmlGeneratorService
 
         try {
             $parameters = $queue->additionalParameters;
-
             $processType = isset($parameters['objects_done']) ? null : 'objects';
+
+            echo "[{$type}] processType={$processType}" . PHP_EOL;
+
             $generated = $xmlGenerator->generate($processType);
+
+            echo "[{$type}] generate() returned: {$generated}" . PHP_EOL;
 
             if (!$generated) {
                 $queue->setErrorStatus();
@@ -98,21 +106,20 @@ class XmlGeneratorService
                 die();
             }
 
-            // if($xml_generator->isFinished()) {
-            // zmiast 10 to podmienic na ENUM
             if ($generated === 10) {
-                // czyli skończone
+                echo "[{$type}] FINISHED — setting executed status" . PHP_EOL;
                 $queue->setExecutedStatus();
                 $queue->setCountErrors(0);
                 return ExitCode::OK;
-                // return true;
             }
 
+            echo "[{$type}] Partial — setting pending for next run" . PHP_EOL;
             $queue->setPendingStatus();
             $queue->setCountErrors(0);
 
             return ExitCode::OK;
         } catch (Exception $e) {
+            echo "[{$type}] EXCEPTION: " . $e->getMessage() . PHP_EOL;
             $queue->raiseCountErrors();
 
             if ($queue->getCountErrors() < 30) {
