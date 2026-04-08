@@ -1,247 +1,108 @@
 <?php
-    use kartik\date\DatePicker;
-    use \yii\helpers\Html;
-    use app\models\IntegrationData;
+use yii\helpers\Html;
+use yii\helpers\Url;
+use app\models\IntegrationData;
+
+/** @var yii\web\View $this */
+/** @var app\models\User $user */
+/** @var array $feedUrls */
 ?>
 
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Ustawienia — <?= Html::encode($user->username) ?></h2>
+    <?= Html::a('← Użytkownicy', Url::toRoute(['admin/index']), ['class' => 'btn btn-secondary']) ?>
+</div>
 
-<div id="sites_panel">
-    <div class="row">
-        <div class="col-md-12 text-center m-3">
-            <img src="https://doc.samba.ai/wp-content/uploads/2019/06/extended-e1559896302899.png" alt="">
-        </div>
+<?php foreach (Yii::$app->session->getAllFlashes() as $type => $messages): ?>
+    <div class="alert alert-<?= $type === 'error' ? 'danger' : $type ?>">
+        <?= implode('<br>', (array) $messages) ?>
     </div>
-    <div class="row">
-        <div class="col-md-6">
-            <div class="panel">
-                <div class="panel-body">
-                    <div class="panel-title">
-                        <h2 class="panel-heading">
-                            Samba ustawienia
-                        </h2>
-                    </div>
-                    <div class="panel-body">
-                        <?php echo Html::beginForm('', 'post') ?>
-                        <div class="form-group">
-                            <?php echo Html::label('Trackpoint', 'trackpoint') ?>
-<?php echo Html::textInput('trackpoint', $user->config->get('trackpoint'), ['class' => 'form-control', 'id' => 'trackpoint']) ?>
-                        </div>
-                        <div class="form-group">
-                            <?php echo Html::label('Generuj dane klientów i zamówień od', 'orders_date_from') ?>
-<?php
-    echo DatePicker::widget([
-        'name'          => 'orders_date_from',
-        'id'            => 'orders_date_from',
-        'language'      => 'pl',
-        'value'         => $user->config->getOrdersDateFrom(),
-        'options'       => ['placeholder' => 'Wybierz datę ...'],
-        'pluginOptions' => [
-            'format'         => 'yyyy-mm-dd',
-            'todayHighlight' => true,
-        ],
-    ]);
-?>
-                        </div>
+<?php endforeach; ?>
 
-                        <div class="form-group">
-                            <?php echo Html::label('Typ exportu danych', 'export_type') ?>
-                            <?php echo Html::dropDownList('export_type', $user->config->get('export_type'),
-                                    ['0' => 'Pełna baza', '1' => 'Inkrementalny']
-                                , ['class' => 'form-control', 'id' => 'export_type']); ?>
-                        </div>
-
-                        <div class="form-group">
-                            <?= Html::label('Działanie feeda produktowego', 'product_feed_disable') ?>
-                            <?= Html::dropDownList('product_feed_disable', $user->config->get('product_feed_disable'),
-                                ['0'=>'Feed produktowy włączony', '1'=>'Feed produktowy wyłączony']
-                            , ['class' => 'form-control', 'id' => 'product_feed_disable']); ?>
-                        </div>
-
-                        <div class="form-group">
-                            <?php echo Html::submitButton('Zapisz', ['class' => 'btn btn-primary']) ?>
-                        </div>
-                        <?php echo Html::endForm() ?>
-                    </div>
+<div class="row">
+    <!-- Ustawienia ogólne -->
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header"><strong>Ustawienia synchronizacji</strong></div>
+            <div class="card-body">
+                <?= Html::beginForm('', 'post') ?>
+                <div class="form-group">
+                    <?= Html::label('Typ eksportu', 'export_type') ?>
+                    <?= Html::dropDownList('export_type', $user->config->get('export_type'), [
+                        '0' => 'Pełna baza',
+                        '1' => 'Inkrementalny',
+                    ], ['class' => 'form-control', 'id' => 'export_type']) ?>
                 </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="panel">
-                <div class="panel-body">
-                    <div class="panel-title">
-                        <h2 class="panel-heading">
-                            Samba feeds urls
-                        </h2>
-                    </div>
-                    <div class="panel-body">
-                        <table class="table">
-                            <tr>
-                                <td>Products</td>
-                                <td><a href="<?php echo $urls['products'] ?>" target="_blank"><?php echo $urls['products'] ?></a></td>
-                                <td><?php echo $user->countDatabaseElements('products') ?></td>
-                                <td><?php echo $filesInfo['products']['status'] ?><?php echo $filesInfo['products']['elements'] ?></td>
-                            </tr>
-                            <tr>
-                                <td>Orders</td>
-                                <td><a href="<?php echo $urls['orders'] ?>" target="_blank"><?php echo $urls['orders'] ?></a></td>
-                                <td><?php echo $user->countDatabaseElements('order') ?></td>
-                                <td><?php echo $filesInfo['order']['status'] ?><?php echo $filesInfo['order']['elements'] ?></td>
-                            </tr>
-                            <tr>
-                                <td>Categories</td>
-                                <td><a href="<?php echo $urls['categories'] ?>" target="_blank"><?php echo $urls['categories'] ?></a></td>
-                                <td>nd</td>
-                                <td><?php echo $filesInfo['category']['status'] ?><?php echo $filesInfo['category']['elements'] ?></td>
-                            </tr>
-                            <tr>
-                                <td>Customers</td>
-                                <td><a href="<?php echo $urls['customers'] ?>" target="_blank"><?php echo $urls['customers'] ?></a></td>
-                                <td><?php echo $user->countDatabaseElements('customer') ?></td>
-                                <td><?php echo $filesInfo['customer']['status'] ?> <?php echo $filesInfo['customer']['elements'] ?></td>
-                            </tr>
-                        </table>
-                    </div>
+                <div class="form-group">
+                    <?= Html::label('Feed enabled', 'feed_enabled') ?>
+                    <?= Html::dropDownList('feed_enabled', $user->config->get('feed_enabled') ?? 1, [
+                        '1' => 'Włączony',
+                        '0' => 'Wyłączony',
+                    ], ['class' => 'form-control', 'id' => 'feed_enabled']) ?>
                 </div>
-            </div>
-            <div class="panel">
-                <div class="panel-body">
-                    <div class="panel-title">
-                        <h2 class="panel-heading">
-                            Samba urls settings
-                        </h2>
-                    </div>
-                    <div class="panel-body">
-                        <table class="table">
-                            <tr>
-                                <th>Typ</th>
-                                <th>Ostatnia integracja</th>
-                            </tr>
-                            <tr>
-                                <td>Products</td>
-                                <td><?= IntegrationData::getDataValue('last_products_integration_date', $user->id) ?></td>
-                            </tr>
-                            <tr>
-                                <td>Orders</td>
-                                <td><?= IntegrationData::getDataValue('last_orders_integration_date', $user->id) ?></td>
-                            </tr>
-                            <tr>
-                                <td>Customers</td>
-                                <td><?= IntegrationData::getDataValue('last_customer_integration_date', $user->id) ?></td>
-                            </tr>
-                        </table>
-                    </div>
-                </div>
+                <?= Html::submitButton('Zapisz', ['class' => 'btn btn-primary']) ?>
+                <?= Html::endForm() ?>
             </div>
         </div>
     </div>
-    <div class="row">
-        <div class="col-md-6">
-            <div class="panel">
-                <div class="panel-body">
-                    <div class="panel-title">
-                        <h2 class="panel-heading">
-                            Feed produktowy
-                        </h2>
-                    </div>
-                    <div class="panel-body">
-                        <?php echo Html::beginForm(\yii\helpers\Url::toRoute(['site/save-product-feed']), 'post') ?>
-                        <table class="table">
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[product_image]', $user->config->get('product_image'), ['class' => 'form-control', 'id' => 'product_image']); ?></td>
-                                <td><?php echo Html::label("Zdjęcie", 'product_image'); ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[product_description]', $user->config->get('product_description'), ['class' => 'form-control', 'id' => 'product_description']); ?></td>
-                                <td><?php echo Html::label("Opis produktu", 'product_description'); ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[product_brand]', $user->config->get('product_brand'), ['class' => 'form-control', 'id' => 'product_brand']); ?></td>
-                                <td><?php echo Html::label("Marka produktu", 'product_brand'); ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[product_stock]', $user->config->get('product_stock'), ['class' => 'form-control', 'id' => 'product_stock']) ?></td>
-                                <td><?php echo Html::label("Stan magazynowy produktu", 'product_stock') ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[product_price_before_discount]', $user->config->get('product_price_before_discount'), ['class' => 'form-control', 'id' => 'product_price_before_discount']); ?></td>
-                                <td><?php echo Html::label("Cena przed obniżką", 'product_price_before_discount'); ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[product_price_buy]', $user->config->get('product_price_buy'), ['class' => 'form-control', 'id' => 'product_price_buy']); ?></td>
-                                <td><?php echo Html::label("Cena zakupu", 'product_price_buy'); ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[product_categorytext]', $user->config->get('product_categorytext'), ['class' => 'form-control', 'id' => 'product_categorytext']); ?></td>
-                                <td><?php echo Html::label("Kategoria", 'product_categorytext'); ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[product_line]', $user->config->get('product_line'), ['class' => 'form-control', 'id' => 'product_line']); ?></td>
-                                <td><?php echo Html::label("Linia produktu", 'product_line'); ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[product_variant]', $user->config->get('product_variant'), ['class' => 'form-control', 'id' => 'product_variant']); ?></td>
-                                <td><?php echo Html::label("Wariant produktu", 'product_variant'); ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[product_parameter]', $user->config->get('product_parameter'), ['class' => 'form-control', 'id' => 'product_parameter']); ?></td>
-                                <td><?php echo Html::label("Parametry produktu", 'product_parameter'); ?></td>
-                            </tr>
-                        </table>
-                        <div class="form-group">
-                            <?php echo Html::submitButton('Zapisz', ['class' => 'btn btn-primary']) ?>
-                        </div>
-                        <?php echo Html::endForm() ?>
-                    </div>
-                </div>
+
+    <!-- Feed URLs -->
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header"><strong>Feed URLs</strong></div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead class="thead-light">
+                        <tr><th>Typ</th><th>URL</th><th>Rekordy w DB</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Products</td>
+                            <td><a href="<?= Html::encode($feedUrls['products']) ?>" target="_blank" class="small">link</a></td>
+                            <td><?= $user->countDatabaseElements('products') ?></td>
+                        </tr>
+                        <tr>
+                            <td>Customers</td>
+                            <td><a href="<?= Html::encode($feedUrls['customers']) ?>" target="_blank" class="small">link</a></td>
+                            <td><?= $user->countDatabaseElements('customer') ?></td>
+                        </tr>
+                        <tr>
+                            <td>Orders</td>
+                            <td><a href="<?= Html::encode($feedUrls['orders']) ?>" target="_blank" class="small">link</a></td>
+                            <td><?= $user->countDatabaseElements('order') ?></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
-        <div class="col-md-6">
-            <div class="panel">
-                <div class="panel-body">
-                    <div class="panel-title">
-                        <h2 class="panel-heading">
-                            Feed klientów
-                        </h2>
-                    </div>
-                    <div class="panel-body">
-                        <?php echo Html::beginForm(\yii\helpers\Url::toRoute(['site/save-customer-feed']), 'post') ?>
-                        <table class="table">
-                            <tr>
-                                <td style="width:34px;"><?php echo Html::checkbox('Settings[customer_feed_email]', $user->config->get('customer_feed_email'), ['class' => 'form-control', 'id' => 'customer_feed_email']); ?></td>
-                                <td><?php echo Html::label("Email klienta", 'customer_feed_email'); ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[customer_feed_registration]', $user->config->get('customer_feed_registration'), ['class' => 'form-control', 'id' => 'customer_feed_registration']); ?></td>
-                                <td><?php echo Html::label("Data rejestracji", 'customer_feed_registration'); ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[customer_feed_first_name]', $user->config->get('customer_feed_first_name'), ['class' => 'form-control', 'id' => 'customer_feed_first_name']); ?></td>
-                                <td><?php echo Html::label("Imię klienta", 'customer_feed_first_name'); ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[customer_feed_last_name]', $user->config->get('customer_feed_last_name'), ['class' => 'form-control', 'id' => 'customer_feed_last_name']) ?></td>
-                                <td><?php echo Html::label("Nazwisko klienta", 'customer_feed_last_name') ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[customer_zip_code]', $user->config->get('customer_zip_code'), ['class' => 'form-control', 'id' => 'customer_zip_code']); ?></td>
-                                <td><?php echo Html::label("Kod pocztowy klienta", 'customer_zip_code'); ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[customer_phone]', $user->config->get('customer_phone'), ['class' => 'form-control', 'id' => 'customer_phone']); ?></td>
-                                <td><?php echo Html::label("Numer telefonu klienta", 'customer_phone'); ?></td>
-                            </tr>
-                            <tr>
-                                <td><?php echo Html::checkbox('Settings[customer_tags]', $user->config->get('customer_tags'), ['class' => 'form-control', 'id' => 'customer_tags']); ?></td>
-                                <td><?php echo Html::label("Tagi klienta", 'customer_tags'); ?></td>
-                            </tr>
-                        </table>
-                        <div class="form-group">
-                            <?php echo Html::submitButton('Zapisz', ['class' => 'btn btn-primary']) ?>
-                        </div>
-                        <?php echo Html::endForm() ?>
-                    </div>
-                </div>
+
+        <div class="card mb-3">
+            <div class="card-header"><strong>Ostatnie integracje</strong></div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead class="thead-light">
+                        <tr><th>Typ</th><th>Data</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Products</td>
+                            <td><?= Html::encode(IntegrationData::getDataValue('last_products_integration_date', $user->id) ?? '-') ?></td>
+                        </tr>
+                        <tr>
+                            <td>Orders</td>
+                            <td><?= Html::encode(IntegrationData::getDataValue('last_orders_integration_date', $user->id) ?? '-') ?></td>
+                        </tr>
+                        <tr>
+                            <td>Customers</td>
+                            <td><?= Html::encode(IntegrationData::getDataValue('last_customer_integration_date', $user->id) ?? '-') ?></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
+</div>
+
+<div class="mt-2">
+    <?= Html::a('Zobacz kolejki użytkownika', Url::toRoute(['admin/view', 'id' => $user->id]), ['class' => 'btn btn-info']) ?>
 </div>

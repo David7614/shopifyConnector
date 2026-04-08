@@ -1,204 +1,355 @@
 <?php
+declare(strict_types=1);
+
 namespace app\controllers;
 
+use app\models\IntegrationData;
+use app\models\Queue;
 use app\models\User;
 use app\modules\xml_generator\src\XmlFeed;
+use app\services\FeedStorageService;
 use Yii;
 use yii\filters\AccessControl;
 use yii\filters\VerbFilter;
 use yii\helpers\Url;
 use yii\web\Controller;
-use app\models\IntegrationData;
+use yii\web\NotFoundHttpException;
+use yii\web\Response;
 
 class AdminController extends Controller
 {
     public $layout = 'admin';
 
-    /**
-     * {@inheritdoc}
-     */
     public function behaviors()
     {
         return [
             'access' => [
-                'class' => AccessControl::className(),
-                'only'  => ['index'],
+                'class' => AccessControl::class,
                 'rules' => [
                     [
-                        'actions' => ['index'],
-                        'allow'   => true,
-                        'roles'   => ['admin'],
+                        'allow' => true,
+                        'roles' => ['admin'],
                     ],
                 ],
             ],
-            'verbs'  => [
-                'class'   => VerbFilter::className(),
+            'verbs' => [
+                'class'   => VerbFilter::class,
                 'actions' => [
-                    'index' => ['get'],
+                    'reset-queue'          => ['post'],
+                    'prepare-queue'        => ['post'],
+                    'save-queues-autorefresh' => ['post'],
+                    'save-queues-collapsed'   => ['post'],
                 ],
             ],
         ];
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function actions()
+    // -------------------------------------------------------------------------
+    // Index — lista użytkowników
+    // -------------------------------------------------------------------------
+
+    public function actionIndex()
     {
-        return [
-            'error'   => [
-                'class' => 'yii\web\ErrorAction',
-            ],
-            'captcha' => [
-                'class'           => 'yii\captcha\CaptchaAction',
-                'fixedVerifyCode' => YII_ENV_TEST ? 'testme' : null,
-            ],
-        ];
+        $users = User::find()->orderBy(['id' => SORT_ASC])->all();
+
+        $summary = [];
+        foreach ($users as $user) {
+            $lastQueue = Queue::find()
+                ->where(['current_integrate_user' => $user->id, 'integrated' => Queue::EXECUTED])
+                ->orderBy(['finished_at' => SORT_DESC])
+                ->one();
+
+            $summary[$user->id] = [
+                'lastFinished' => $lastQueue ? $lastQueue->finished_at : null,
+                'counts'       => [
+                    'product'  => $user->countDatabaseElements('products'),
+                    'customer' => $user->countDatabaseElements('customer'),
+                    'order'    => $user->countDatabaseElements('order'),
+                ],
+                'errors' => Queue::find()
+                    ->where(['current_integrate_user' => $user->id, 'integrated' => Queue::ERROR])
+                    ->count(),
+            ];
+        }
+
+        return $this->render('index', [
+            'users'   => $users,
+            'summary' => $summary,
+        ]);
     }
 
-    /**
-     * Displays homepage.
-     *
-     * @return string
-     */
-    public function actionDashboard($id)
+    // -------------------------------------------------------------------------
+    // Dashboard — ustawienia użytkownika
+    // -------------------------------------------------------------------------
+
+    public function actionDashboard(int $id)
     {
-        $user = User::findOne($id);
+        $user = $this->findUser($id);
 
         if (Yii::$app->request->isPost) {
-            $oldTrackpoint=$user->getConfig()->get('trackpoint');
-            $trackpoint = Yii::$app->request->post('trackpoint');
-            if ($oldTrackpoint != $trackpoint)
-            {
-                $user->saveTrackpoint($trackpoint);
-                // die ("track changed");
-            }
+            $export_type = (int) Yii::$app->request->post('export_type', 0);
 
-            $smartpoint = Yii::$app->request->post('smartpoint');
-            var_dump($user->getConfig()->set('smartpoint', $smartpoint));
-
-            $selected_language = Yii::$app->request->post('selected_language');
-            var_dump($user->getConfig()->set('selected_language', $selected_language));
-
-            $aggregate_groups_as_variants = Yii::$app->request->post('aggregate_groups_as_variants');
-            var_dump($user->getConfig()->set('aggregate_groups_as_variants', $aggregate_groups_as_variants));
-
-            $orders_date_from = Yii::$app->request->post('orders_date_from');
-            $user->getConfig()->setOrdersDateFrom($orders_date_from);
-
-            $get_quantity_from = Yii::$app->request->post('get_quantity_from');
-            var_dump($user->getConfig()->set('get_quantity_from', $get_quantity_from));
-
-            $get_menu_from = Yii::$app->request->post('get_menu_from');
-            var_dump($user->getConfig()->set('get_menu_from', $get_menu_from));
-
-            $product_feed_disable = Yii::$app->request->post('product_feed_disable');
-            var_dump($user->getConfig()->set('product_feed_disable', $product_feed_disable));
-
-            $export_type = Yii::$app->request->post('export_type');
-            if ((int)$user->getConfig()->get('export_type') != $export_type) {
-                if ($export_type == 0) {
+            if ((int) $user->getConfig()->get('export_type') !== $export_type) {
+                if ($export_type === 0) {
                     $lastDate = date('Y-m-d', strtotime('-5 years'));
-
-                    $dateFrom = $user->getConfig()->getOrdersDateFrom();
-
-                    if ($dateFrom) {
-                        $lastDate = date('Y-m-d', strtotime($dateFrom));
-                    }
-
                     IntegrationData::setLastOrdersIntegrationDate($lastDate, $user->id);
-
                     $lastDate = date('Y-m-d', strtotime('-20 years'));
-
                     IntegrationData::setLastCustomerIntegrationDate($lastDate, $user->id);
-                    IntegrationData::setData('LAST_SUBSCRIBER_INTEGRATION_DATE', $lastDate, $user->id);
-                    IntegrationData::setData('LLAST_PHONESUBSCRIBER_INTEGRATION_DATE', $lastDate, $user->id);
                 }
                 $user->getConfig()->set('export_type', $export_type);
             }
 
-            Yii::$app->session->addFlash('success', 'Ustawienia g��owne zapisane');
-            // customer_set_shop_id
-            if ($customer_set_shop_id = Yii::$app->request->post('customer_set_shop_id')) {
-                $user->config->set('customer_set_shop_id', $customer_set_shop_id);
-            }
+            $user->getConfig()->set('feed_enabled', (int) Yii::$app->request->post('feed_enabled', 1));
+
+            Yii::$app->session->addFlash('success', 'Ustawienia zapisane');
             return $this->redirect(Url::toRoute(['admin/dashboard', 'id' => $user->id]));
         }
 
-        $xml_generator = new XmlFeed();
-        $xml_generator->setType('product');
-        $xml_generator->setUser($user);
-        $urls             = [];
-        $urls['products'] = $xml_generator->getFile(true, false);
-        $xml_generator->setType('customer');
-        $urls['customer'] = $xml_generator->getFile(true, false);
-        $xml_generator->setType('order');
-        $urls['order'] = $xml_generator->getFile(true, false);
-        $xml_generator->setType('category');
-        $urls['category'] = $xml_generator->getFile(true, false);
-
-        foreach ($urls as $type => $fileName) {
-            // echo "**** TYP ".$type.PHP_EOL;
-            // echo "plik ".$fileName.PHP_EOL;
-            // echo "Element��w w bazie: ".$user->countDatabaseElements($type).PHP_EOL;
-            $filesInfo[$type]           = [];
-            $filesInfo[$type]['status'] = 'gotowy';
-            if (! is_file($fileName)) {
-                $filesInfo[$type]['status']   = 'Nie gotowy';
-                $filesInfo[$type]['elements'] = 0;
-                // echo "BRAK PLIKU ".$fileName.PHP_EOL;
-            }  else {
-                $xml     = file_get_contents($fileName);
-                $tagName = strtoupper($type);
-                if ($type == 'products') {
-                    $tagName = 'PRODUCT';
-                }
-                if ($type == 'category') {
-                    $tagName = 'ITEM';
-                }
-                $tag_count                    = substr_count($xml, "<" . $tagName . ">");
-                $filesInfo[$type]['elements'] = $tag_count;
-
-            }
-        }
-
-        $urls               = [];
-        $urls['products']   = Url::home(true) . 'xml/' . $user->uuid . '/products.xml';
-        $urls['customers']  = Url::home(true) . 'xml/' . $user->uuid . '/customers.xml';
-        $urls['orders']     = Url::home(true) . 'xml/' . $user->uuid . '/orders.xml';
-        $urls['categories'] = Url::home(true) . 'xml/' . $user->uuid . '/categories.xml';
+        $feedUrls = $this->buildFeedUrls($user);
 
         return $this->render('update', [
-            'user'      => $user,
-            'urls'      => $urls,
-            'filesInfo' => $filesInfo,
+            'user'     => $user,
+            'feedUrls' => $feedUrls,
         ]);
     }
-    public function actionIndex()
+
+    // -------------------------------------------------------------------------
+    // View — monitor kolejek użytkownika
+    // -------------------------------------------------------------------------
+
+    public function actionView(int $id)
     {
-        $user = User::findIdentity(Yii::$app->user->id);
+        $user = $this->findUser($id);
 
-        // $connection = new Connection($user);
-        // $gate='http://'.$user->username.'/api/?gate=systemconfig/get/162/soap/wsdl&lang=eng';
-        // $client=new \app\modules\xml_generator\src\IdioselClient($gate, $connection->getToken()->getToken());
-        // $request=new \app\modules\xml_generator\src\SoapRequest();
-        // $response = $client->get($request->getRequest());
+        $typeFilter   = Yii::$app->request->get('type', '');
+        $statusFilter = Yii::$app->request->get('status', '');
 
-        return $this->render('index', [
-            'user' => $user,
-            // 'shops' => $response->shops,
-            // 'languages' => $response->languages,
-            // 'stocks' => isset($response->stocks)?$response->stocks:null
+        $query = Queue::find()
+            ->where(['current_integrate_user' => $user->id])
+            ->orderBy(['id' => SORT_DESC])
+            ->limit(200);
+
+        if ($typeFilter !== '') {
+            $query->andWhere(['integration_type' => $typeFilter]);
+        }
+        if ($statusFilter !== '') {
+            $query->andWhere(['integrated' => (int) $statusFilter]);
+        }
+
+        $queues = $query->all();
+
+        $statusCounts = [];
+        foreach ([Queue::PENDING, Queue::RUNNING, Queue::EXECUTED, Queue::ERROR, Queue::MISSED] as $s) {
+            $statusCounts[$s] = Queue::find()
+                ->where(['current_integrate_user' => $user->id, 'integrated' => $s])
+                ->count();
+        }
+
+        return $this->render('view', [
+            'user'         => $user,
+            'queues'       => $queues,
+            'statusCounts' => $statusCounts,
+            'typeFilter'   => $typeFilter,
+            'statusFilter' => $statusFilter,
         ]);
     }
 
+    // -------------------------------------------------------------------------
+    // Queues — globalny monitor kolejek
+    // -------------------------------------------------------------------------
+
+    public function actionQueues()
+    {
+        $running = Queue::find()->where(['integrated' => Queue::RUNNING])->count();
+        $errors  = Queue::find()->where(['integrated' => Queue::ERROR])->count();
+        $pending = Queue::find()->where(['integrated' => Queue::PENDING])->count();
+
+        return $this->render('queues', [
+            'running' => $running,
+            'errors'  => $errors,
+            'pending' => $pending,
+        ]);
+    }
+
+    public function actionQueuesSections()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+
+        $section = Yii::$app->request->get('section', '');
+
+        $data = match ($section) {
+            'running' => Queue::find()
+                ->where(['integrated' => Queue::RUNNING])
+                ->with('user')
+                ->orderBy(['executed_at' => SORT_ASC])
+                ->all(),
+            'errors'  => Queue::find()
+                ->where(['integrated' => Queue::ERROR])
+                ->with('user')
+                ->orderBy(['executed_at' => SORT_DESC])
+                ->limit(50)
+                ->all(),
+            'pending' => Queue::find()
+                ->where(['integrated' => Queue::PENDING])
+                ->with('user')
+                ->orderBy(['next_integration_date' => SORT_ASC])
+                ->limit(50)
+                ->all(),
+            'recent'  => Queue::find()
+                ->where(['integrated' => Queue::EXECUTED])
+                ->with('user')
+                ->orderBy(['finished_at' => SORT_DESC])
+                ->limit(30)
+                ->all(),
+            default   => [],
+        };
+
+        return array_map(fn($q) => [
+            'id'               => $q->id,
+            'type'             => $q->integration_type,
+            'status'           => $q->integrated,
+            'page'             => $q->page,
+            'max_page'         => $q->max_page,
+            'executed_at'      => $q->executed_at,
+            'finished_at'      => $q->finished_at,
+            'next_integration_date' => $q->next_integration_date,
+            'username'         => $q->getCurrentUser()?->username ?? '?',
+            'parameters'       => $q->getAdditionalParameters(),
+        ], $data);
+    }
+
+    // -------------------------------------------------------------------------
+    // Reset / uruchomienie kolejek
+    // -------------------------------------------------------------------------
+
+    public function actionResetQueue(int $queueId)
+    {
+        $queue = Queue::findOne($queueId);
+        if (!$queue) {
+            throw new NotFoundHttpException("Queue #$queueId not found");
+        }
+
+        $queue->setPendingStatus();
+        $queue->page     = 0;
+        $queue->max_page = 0;
+        $queue->save();
+
+        Yii::$app->session->addFlash('success', "Kolejka #{$queueId} zresetowana do PENDING");
+
+        $returnUrl = Yii::$app->request->referrer ?: Url::toRoute(['admin/queues']);
+        return $this->redirect($returnUrl);
+    }
+
+    public function actionPrepareQueue()
+    {
+        Queue::prepareQueue(XmlFeed::PRODUCT);
+        Queue::prepareQueue(XmlFeed::CUSTOMER);
+        Queue::prepareQueue(XmlFeed::ORDER);
+
+        Yii::$app->session->addFlash('success', 'Kolejki przygotowane dla wszystkich użytkowników');
+        return $this->redirect(Url::toRoute(['admin/queues']));
+    }
+
+    // -------------------------------------------------------------------------
+    // AJAX — odświeżanie liczników feedów
+    // -------------------------------------------------------------------------
+
+    public function actionRefreshFeedCounts(int $id)
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+
+        $user = $this->findUser($id);
+
+        return [
+            'product'  => $user->countDatabaseElements('products'),
+            'customer' => $user->countDatabaseElements('customer'),
+            'order'    => $user->countDatabaseElements('order'),
+        ];
+    }
+
+    // -------------------------------------------------------------------------
+    // Admins — zarządzanie administratorami
+    // -------------------------------------------------------------------------
+
+    public function actionAdmins()
+    {
+        $auth    = Yii::$app->authManager;
+        $adminRole = $auth->getRole('admin');
+        $adminIds = $adminRole ? array_keys($auth->getUserIdsByRole('admin')) : [];
+        $admins  = $adminIds ? User::find()->where(['id' => $adminIds])->all() : [];
+
+        $error = null;
+
+        if (Yii::$app->request->isPost) {
+            $action = Yii::$app->request->post('action');
+
+            if ($action === 'add') {
+                $username = trim(Yii::$app->request->post('username', ''));
+                $email    = trim(Yii::$app->request->post('email', ''));
+                $password = Yii::$app->request->post('password', '');
+
+                $user = new User();
+                $user->register($username, $email, $password);
+
+                if ($user->save()) {
+                    $auth->assign($auth->getRole('admin'), $user->id);
+                    Yii::$app->session->addFlash('success', "Administrator {$username} dodany");
+                } else {
+                    $error = 'Błąd zapisu: ' . json_encode($user->errors);
+                }
+            }
+
+            if ($action === 'change-password') {
+                $userId      = (int) Yii::$app->request->post('user_id');
+                $newPassword = Yii::$app->request->post('new_password', '');
+                $target      = User::findOne($userId);
+
+                if ($target && $newPassword) {
+                    $target->password = Yii::$app->security->generatePasswordHash($newPassword);
+                    $target->save(false);
+                    Yii::$app->session->addFlash('success', 'Hasło zmienione');
+                }
+            }
+
+            if ($action === 'delete') {
+                $userId = (int) Yii::$app->request->post('user_id');
+                if ($userId !== Yii::$app->user->id) {
+                    $auth->revokeAll($userId);
+                    Yii::$app->session->addFlash('success', "Admin #{$userId} usunięty");
+                } else {
+                    Yii::$app->session->addFlash('error', 'Nie możesz usunąć własnego konta');
+                }
+            }
+
+            return $this->redirect(Url::toRoute(['admin/admins']));
+        }
+
+        return $this->render('admins', [
+            'admins' => $admins,
+            'error'  => $error,
+        ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    private function findUser(int $id): User
+    {
+        $user = User::findOne($id);
+        if (!$user) {
+            throw new NotFoundHttpException("User #$id not found");
+        }
+        return $user;
+    }
+
+    private function buildFeedUrls(User $user): array
+    {
+        $base = Url::home(true);
+        return [
+            'products'  => $base . 'xml/' . $user->uuid . '/products.xml',
+            'customers' => $base . 'xml/' . $user->uuid . '/customers.xml',
+            'orders'    => $base . 'xml/' . $user->uuid . '/orders.xml',
+        ];
+    }
 }
-
-/*
-$auth = Yii::$app->authManager;
-
-$admin = $auth->createRole('admin');
-// $auth->save();
-
-$auth->assign($admin, $user->id);
- */
