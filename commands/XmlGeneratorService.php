@@ -22,11 +22,8 @@ class XmlGeneratorService
         }
 
 
-        if (isset($config['shop_type'])) {
-            $queue = Queue::findLastForTypeAndShop($type, $config['shop_type']);
-        } else {
-            $queue = Queue::findLastForType($type);
-        }
+        $queue = Queue::findLastForType($type);
+        
 
         return $queue;
     }
