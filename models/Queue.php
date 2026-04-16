@@ -285,7 +285,7 @@ class Queue extends \yii\db\ActiveRecord
      */
     public static function prepareQueue(string $type)
     {
-        $user_list = User::find()->where(['active' => 1])->all();
+        $user_list = User::find()->where(['active' => 1])->andWhere(['!=', 'user_type', 'admin'])->all();
         $date = date('Y-m-d');
         $maxDate = date('Y-m-d H:i:s', strtotime(date('Y-m-d') . " + " . self::QUEUE_FOR_DAYS . " days "));
 
