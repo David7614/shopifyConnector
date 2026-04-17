@@ -43,7 +43,7 @@ class XmlGeneratorService
 
             $iterations++;
 
-            if ($result === ExitCode::ERR) {
+            if ($result === ExitCode::UNSPECIFIED_ERROR) {
                 echo "[{$type}] Queue error — stopping loop" . PHP_EOL;
                 break;
             }
@@ -101,7 +101,7 @@ class XmlGeneratorService
         if (!$user) {
             echo "[{$type}] User not found for queue #{$queue->id} — deleting queue" . PHP_EOL;
             $queue->delete();
-            return ExitCode::ERR;
+            return ExitCode::UNSPECIFIED_ERROR;
         }
 
         echo "[{$type}] User: {$user->username} (shop_type={$user->shop_type})" . PHP_EOL;
