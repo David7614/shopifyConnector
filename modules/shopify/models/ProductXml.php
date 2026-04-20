@@ -80,7 +80,10 @@ class ProductXml
                         $variantXml = $productXml->addChild('VARIANT');
 
                         $variantXml->addChild('PRODUCT_ID', (string) $variant['PRODUCT_ID']);
-                        $variantXml->addChild('TITLE', SambaHelper::sanitizeForXml($variant['TITLE']));
+                        $variantTitle=SambaHelper::sanitizeForXml($variant['TITLE']);
+                        if (strlen($variantTitle)>5){
+                            $variantXml->addChild('TITLE', SambaHelper::sanitizeForXml($variant['TITLE']));
+                        }
                         $variantXml->addChild('URL', $variant['URL']);
                         $variantXml->addChild('PRICE', (string) $variant['PRICE']);
 
