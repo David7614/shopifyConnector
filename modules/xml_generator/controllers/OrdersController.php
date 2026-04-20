@@ -25,11 +25,12 @@ class OrdersController extends Controller
                     die;
                 }
 
-                $content = $storage->get($key);
+                [$size, $stream] = $storage->getStream($key);
                 header('Content-type: application/xml; charset=utf-8');
                 header('Content-Disposition: attachment; filename="orders.xml"');
-                header('Content-Length: ' . strlen($content));
-                echo $content;
+                header('Content-Length: ' . $size);
+                fpassthru($stream);
+                fclose($stream);
                 die;
             } catch (\Exception $e) {
                 return $e->getMessage();
