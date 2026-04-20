@@ -107,6 +107,22 @@ class FeedStorageService
         return (string) $result['Body'];
     }
 
+    /**
+     * Returns [size, resource] for the S3 object so the caller can set headers
+     * before streaming. Caller is responsible for fclose($resource).
+     *
+     * @return array{0: int, 1: resource}
+     */
+    public function getStream(string $key): array
+    {
+        $result = $this->s3->getObject([
+            'Bucket' => $this->bucket,
+            'Key'    => $this->prefix . $key,
+        ]);
+
+        return [(int) $result['ContentLength'], $result['Body']->detach()];
+    }
+
     public function put(string $key, string $content, string $contentType = 'application/octet-stream'): void
     {
         $this->s3->putObject([
