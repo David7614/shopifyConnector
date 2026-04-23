@@ -735,7 +735,7 @@ class Product
             }
         } catch (Exception $e) {
             echo '>----- product - prepareFromApi - Error 2:' . PHP_EOL;
-            var_dump($e->getMessage());
+            var_dump($e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
         }
 
         return false;
