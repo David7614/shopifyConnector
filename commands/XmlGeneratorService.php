@@ -149,7 +149,7 @@ class XmlGeneratorService
 
             return ExitCode::OK;
         } catch (\Throwable $e) {
-            $this->printThrowable($e);
+            self::printThrowable($e);
             $queue->raiseCountErrors();
 
             if ($queue->getCountErrors() < 30) {
@@ -162,7 +162,7 @@ class XmlGeneratorService
         }
     }
 
-    private function printThrowable(\Throwable $e): void
+    public static function printThrowable(\Throwable $e): void
     {
         echo PHP_EOL;
         echo '=== ' . get_class($e) . ' ===' . PHP_EOL;
