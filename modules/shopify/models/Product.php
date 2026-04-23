@@ -493,6 +493,9 @@ class Product
         $lowestPrice = 0;
 
         foreach($metafield['jsonValue'] as $item) {
+            if (!isset($item['lowest_price'])) {
+                continue;
+            }
             if ($lowestPrice === 0) {
                 $lowestPrice = $item['lowest_price'];
             } else if ($item['lowest_price'] < $lowestPrice) {
