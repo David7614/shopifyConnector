@@ -148,8 +148,8 @@ class XmlGeneratorService
             $queue->setCountErrors(0);
 
             return ExitCode::OK;
-        } catch (Exception $e) {
-            echo "[{$type}] EXCEPTION: " . $e->getMessage() . PHP_EOL;
+        } catch (\Throwable $e) {
+            $this->printThrowable($e);
             $queue->raiseCountErrors();
 
             if ($queue->getCountErrors() < 30) {
@@ -159,6 +159,20 @@ class XmlGeneratorService
             }
 
             return ExitCode::UNSPECIFIED_ERROR;
+        }
+    }
+
+    private function printThrowable(\Throwable $e): void
+    {
+        echo PHP_EOL;
+        echo '=== ' . get_class($e) . ' ===' . PHP_EOL;
+        echo 'Message : ' . $e->getMessage() . PHP_EOL;
+        echo 'File    : ' . $e->getFile() . ':' . $e->getLine() . PHP_EOL;
+        echo 'Code    : ' . $e->getCode() . PHP_EOL;
+        echo 'Trace   :' . PHP_EOL . $e->getTraceAsString() . PHP_EOL;
+        if ($e->getPrevious()) {
+            echo '--- Caused by ---' . PHP_EOL;
+            $this->printThrowable($e->getPrevious());
         }
     }
 }
