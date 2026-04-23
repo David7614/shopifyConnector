@@ -290,6 +290,8 @@ class Queue extends \yii\db\ActiveRecord
         $maxDate = date('Y-m-d H:i:s', strtotime(date('Y-m-d') . " + " . self::QUEUE_FOR_DAYS . " days "));
 
         foreach($user_list as $user) {
+            echo "Preparing queue for user {$user->username} and type {$type} from {$date} to {$maxDate}" . PHP_EOL;
+
             $lastScheduled = $user->getUserDataValue('last_sheduled_' . $type);
 
             if (!$lastScheduled) {
@@ -313,6 +315,7 @@ class Queue extends \yii\db\ActiveRecord
                     $queue->max_page = 0;
                     $queue->setAdditionalParameters([]);
                     $queue->save();
+                    echo "saved queue " . $queue->id . " for date " . $sheduleDate . PHP_EOL;
 
                     $sheduleDate2 = date('Y-m-d H:i:s', strtotime($sheduleDate . " + 10 minutes"));
                     $queue = new self();
@@ -324,6 +327,7 @@ class Queue extends \yii\db\ActiveRecord
                     $queue->max_page = 0;
                     $queue->setAdditionalParameters(['objects_done' => 1]);
                     $queue->save();
+                    echo "saved queue xml " . $queue->id . " for date " . $sheduleDate . PHP_EOL;
                 }
 
                 $user->setUserDataValue('last_sheduled_' . $type, $sheduleDate);
@@ -506,5 +510,33 @@ class Queue extends \yii\db\ActiveRecord
         }
 
         return $isDisallowedEmail;
+    }
+
+    public static function cleanupOldQueues(): void
+    {
+        Queue::removeOldErrors(168); // usuwanie starych błędnych kolejek po tygodniu
+        Queue::removeOldCompleted(48); // usuwanie starych zakończonych kolejek po 2 dniach
+        Queue::removeOldRunning(168); // usuwanie starych zablokowanych kolejek po tygodniu
+    }
+
+    public static function removeOldErrors(int $hours): void
+    {
+        $threshold = date('Y-m-d H:i:s', strtotime("-{$hours} hours"));
+        self::deleteAll(['and', ['integrated' => self::ERROR], ['<', 'next_integration_date', $threshold]]);
+        echo "removeOldErrors: threshold={$threshold}" . PHP_EOL;
+    }
+
+    public static function removeOldCompleted(int $hours): void
+    {
+        $threshold = date('Y-m-d H:i:s', strtotime("-{$hours} hours"));
+        self::deleteAll(['and', ['integrated' => self::EXECUTED], ['<', 'next_integration_date', $threshold]]);
+        echo "removeOldCompleted: threshold={$threshold}" . PHP_EOL;
+    }
+
+    public static function removeOldRunning(int $hours): void
+    {
+        $threshold = date('Y-m-d H:i:s', strtotime("-{$hours} hours"));
+        self::deleteAll(['and', ['integrated' => self::RUNNING], ['<', 'next_integration_date', $threshold]]);
+        echo "removeOldRunning: threshold={$threshold}" . PHP_EOL;
     }
 }

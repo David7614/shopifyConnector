@@ -18,9 +18,14 @@ class XmlGeneratorController extends Controller
 
     public function actionPrepareQueue()
     {
-        Queue::prepareQueue(XmlFeed::PRODUCT);
         Queue::prepareQueue(XmlFeed::CUSTOMER);
+        Queue::prepareQueue(XmlFeed::PRODUCT);
         Queue::prepareQueue(XmlFeed::ORDER);
+
+        Queue::cleanupOldQueues(); // usuwanie staroci
+
+        
+        echo "OK";
     }
 
     public function actionGenerateProducts($forceId = 0, $forcePage = null)
