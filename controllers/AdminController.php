@@ -255,8 +255,9 @@ class AdminController extends Controller
     // Reset / uruchomienie kolejek
     // -------------------------------------------------------------------------
 
-    public function actionResetQueue(int $queueId)
+    public function actionResetQueue()
     {
+        $queueId = (int) Yii::$app->request->post('queueId');
         $queue = Queue::findOne($queueId);
         if (!$queue) {
             throw new NotFoundHttpException("Queue #$queueId not found");
@@ -279,8 +280,11 @@ class AdminController extends Controller
      * and, if nothing of this type is already queued, schedules a fresh
      * fetch+XML pair for today at 01:00/01:10 so it runs right away.
      */
-    public function actionResetIntegration(int $id, string $type)
+    public function actionResetIntegration()
     {
+        $id = (int) Yii::$app->request->post('id');
+        $type = (string) Yii::$app->request->post('type');
+
         $user = $this->findUser($id);
 
         if (!in_array($type, [XmlFeed::PRODUCT, XmlFeed::CUSTOMER, XmlFeed::ORDER], true)) {
