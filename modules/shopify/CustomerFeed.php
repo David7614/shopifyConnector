@@ -31,6 +31,9 @@ class CustomerFeed extends XmlFeed
     const STATUS_FAIL = 0;
     const STATUS_FINISHED = 10;
 
+    /** S3/MinIO requires every part except the last to be at least 5 MB. */
+    const MULTIPART_CHUNK_THRESHOLD = 5 * 1024 * 1024;
+
     private $client;
 
     public function generate($processType = null): int
@@ -65,45 +68,77 @@ class CustomerFeed extends XmlFeed
         return 'customer/' . $this->_user->uuid . '/customer' . $ext;
     }
 
+    /**
+     * Per-page fragment written durably as its own small object — a page
+     * is only ever considered done once this write succeeds, so an abrupt
+     * interruption (loopQueue can be killed anytime) costs at most one
+     * re-fetched page, never more.
+     */
+    private function getPartKey(int $page): string
+    {
+        return 'customer/' . $this->_user->uuid . '/tmp/parts/' . $page . '.xml';
+    }
+
     private function generateXmlViaStorage(): int
     {
         $storage = FeedStorageService::create();
-        $tempKey = $this->getStorageKey(true);
         $fileKey = $this->getStorageKey(false);
 
+        $this->migrateLegacyStorageIfNeeded($storage);
+
         if (!$this->isFinished()) {
-            return $this->prepareCustomerXmlViaStorage($storage, $tempKey, $fileKey);
-        } elseif (!$storage->exists($tempKey)) {
-            $this->_queue->page     = 0;
-            $this->_queue->max_page = 0;
-            $this->_queue->save();
-            return $this->prepareCustomerXmlViaStorage($storage, $tempKey, $fileKey);
-        } else {
-            return $this->createCustomerXmlViaStorage($storage, $fileKey, $tempKey);
+            return $this->prepareCustomerXmlViaStorage($storage, $fileKey);
         }
+
+        return $this->createCustomerXmlViaStorage($storage, $fileKey);
     }
 
-    private function prepareCustomerXmlViaStorage(FeedStorageService $storage, string $tempKey, string $fileKey): int
+    /**
+     * Queues that were mid-flight when the per-page storage scheme shipped
+     * accumulated their progress in the old single growing tempKey, which
+     * this code no longer reads. If page > 0 but part 0 was never written,
+     * the progress must predate this scheme — reset and redo from page 0.
+     * Cheap: phase 2 only re-reads MySQL, no Shopify API calls involved.
+     */
+    private function migrateLegacyStorageIfNeeded(FeedStorageService $storage): void
     {
-        $integrationDataCurrentPage = $this->_queue->page;
-        $integrationDataMaxPage     = $this->_queue->max_page;
-        $page_size                  = self::XML_PAGE_SIZE;
+        if ($this->_queue->page <= 0) {
+            return;
+        }
+
+        if ($storage->exists($this->getPartKey(0))) {
+            return;
+        }
+
+        $legacyTempKey = $this->getStorageKey(true);
+        if ($storage->exists($legacyTempKey)) {
+            $storage->delete($legacyTempKey);
+        }
+
+        $this->_queue->page     = 0;
+        $this->_queue->max_page = 0;
+        $this->_queue->save();
+    }
+
+    private function prepareCustomerXmlViaStorage(FeedStorageService $storage, string $fileKey): int
+    {
+        $page      = $this->_queue->page;
+        $max_page  = $this->_queue->max_page;
+        $page_size = self::XML_PAGE_SIZE;
 
         $query = Customers::find()->where(['user_id' => $this->_queue->getCurrentUser()->id]);
 
-        $page = $integrationDataCurrentPage;
-
-        if ($integrationDataMaxPage == 0) {
-            $total                  = $query->count();
-            $pages                  = ceil($total / $page_size);
-            $this->_queue->max_page = $pages;
-            $integrationDataMaxPage = $pages;
+        if ($max_page == 0) {
+            $total    = $query->count();
+            $max_page = (int) ceil($total / $page_size);
+            $this->_queue->max_page = $max_page;
             $this->_queue->page     = $page;
             $this->_queue->save();
         }
 
-        $res           = $query->limit($page_size)->offset($page * $page_size)->all();
+        $res = $query->limit($page_size)->offset($page * $page_size)->all();
         $customers_str = '';
+        $fields_to_integrate = CustomerXml::getFieldsToIntegrate($this->_user);
 
         try {
             foreach ($res as $customer) {
@@ -113,15 +148,16 @@ class CustomerFeed extends XmlFeed
                 if ($customer->isCustomerValidForXml() == false) {
                     continue;
                 }
-                $xmlEntity = CustomerXml::getEntity($customer, $this->_user);
+                $xmlEntity = CustomerXml::getEntity($customer, $this->_user, $fields_to_integrate);
                 if (!$xmlEntity) {
                     continue;
                 }
                 $customers_str .= $xmlEntity;
             }
 
-            $existing = $storage->exists($tempKey) ? $storage->get($tempKey) : '';
-            $storage->put($tempKey, $existing . $customers_str);
+            // Single put of just this page's content — no read-modify-write
+            // of everything accumulated so far, unlike the old tempKey scheme.
+            $storage->put($this->getPartKey($page), $customers_str);
         } catch (Exception $e) {
             return self::STATUS_FAIL;
         }
@@ -130,21 +166,66 @@ class CustomerFeed extends XmlFeed
         $this->_queue->page = $page;
         $this->_queue->save();
 
-        if ($page > (int) $integrationDataMaxPage) {
-            return $this->createCustomerXmlViaStorage($storage, $fileKey, $tempKey);
+        if ($page > (int) $max_page) {
+            return $this->createCustomerXmlViaStorage($storage, $fileKey);
         }
 
         return self::STATUS_OK;
     }
 
-    private function createCustomerXmlViaStorage(FeedStorageService $storage, string $fileKey, string $tempKey): int
+    /**
+     * Assembles the final feed from the per-page parts via a streamed S3
+     * multipart upload, so memory use stays bounded to one chunk
+     * (~5 MB) regardless of how many customers/pages the feed has.
+     * Retryable: nothing durable is deleted until CompleteMultipartUpload
+     * succeeds, so a kill mid-assembly just redoes this step from parts
+     * that are still sitting in storage.
+     */
+    private function createCustomerXmlViaStorage(FeedStorageService $storage, string $fileKey): int
     {
-        $tempContent = $storage->get($tempKey);
-        $customers   = new SimpleXMLElement('<CUSTOMERS/>');
+        $max_page = (int) $this->_queue->max_page;
+
+        $customers = new SimpleXMLElement('<CUSTOMERS/>');
         $customers->addChild('CUSTOMER');
-        $finalXml = str_replace('<CUSTOMER/>', $tempContent, $customers->asXML());
-        $storage->put($fileKey, $finalXml, 'application/xml');
-        $storage->delete($tempKey);
+        [$prefix, $suffix] = explode('<CUSTOMER/>', $customers->asXML(), 2);
+
+        $storage->abortStaleMultipartUploads($fileKey);
+        $uploadId = $storage->createMultipartUpload($fileKey, 'application/xml');
+
+        $parts      = [];
+        $partNumber = 1;
+        $buffer     = $prefix;
+
+        try {
+            for ($page = 0; $page < $max_page; $page++) {
+                $buffer .= $storage->get($this->getPartKey($page));
+
+                if (strlen($buffer) >= self::MULTIPART_CHUNK_THRESHOLD) {
+                    $parts[] = [
+                        'PartNumber' => $partNumber,
+                        'ETag'       => $storage->uploadPart($fileKey, $uploadId, $partNumber, $buffer),
+                    ];
+                    $partNumber++;
+                    $buffer = '';
+                }
+            }
+
+            $buffer .= $suffix;
+            $parts[] = [
+                'PartNumber' => $partNumber,
+                'ETag'       => $storage->uploadPart($fileKey, $uploadId, $partNumber, $buffer),
+            ];
+
+            $storage->completeMultipartUpload($fileKey, $uploadId, $parts);
+        } catch (Exception $e) {
+            $storage->abortMultipartUpload($fileKey, $uploadId);
+            return self::STATUS_FAIL;
+        }
+
+        for ($page = 0; $page < $max_page; $page++) {
+            $storage->delete($this->getPartKey($page));
+        }
+
         return self::STATUS_FINISHED;
     }
 
@@ -176,6 +257,7 @@ class CustomerFeed extends XmlFeed
         }
 
         $res = $query->limit($page_size)->offset(($page) * $page_size)->all();
+        $fields_to_integrate = CustomerXml::getFieldsToIntegrate($this->_user);
 
         try {
             $customers_str = "";
@@ -192,7 +274,7 @@ class CustomerFeed extends XmlFeed
                     continue;
                 }
 
-                $xmlEntity = CustomerXml::getEntity($customer, $this->_user);
+                $xmlEntity = CustomerXml::getEntity($customer, $this->_user, $fields_to_integrate);
 
                 if (!$xmlEntity) {
                     continue;

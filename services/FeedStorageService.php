@@ -150,4 +150,88 @@ class FeedStorageService
             // ignore if not found
         }
     }
+
+    /**
+     * Starts a multipart upload and returns its UploadId.
+     * Lets large objects be assembled from parts without holding the whole
+     * content in memory at once.
+     */
+    public function createMultipartUpload(string $key, string $contentType = 'application/octet-stream'): string
+    {
+        $result = $this->s3->createMultipartUpload([
+            'Bucket'      => $this->bucket,
+            'Key'         => $this->prefix . $key,
+            'ContentType' => $contentType,
+        ]);
+
+        return (string) $result['UploadId'];
+    }
+
+    /**
+     * Uploads one part of a multipart upload. Every part except the last
+     * must be at least 5 MB (S3/MinIO requirement).
+     *
+     * @return string The part's ETag, needed to complete the upload.
+     */
+    public function uploadPart(string $key, string $uploadId, int $partNumber, string $body): string
+    {
+        $result = $this->s3->uploadPart([
+            'Bucket'     => $this->bucket,
+            'Key'        => $this->prefix . $key,
+            'UploadId'   => $uploadId,
+            'PartNumber' => $partNumber,
+            'Body'       => $body,
+        ]);
+
+        return (string) $result['ETag'];
+    }
+
+    /**
+     * @param array<int, array{PartNumber: int, ETag: string}> $parts
+     */
+    public function completeMultipartUpload(string $key, string $uploadId, array $parts): void
+    {
+        $this->s3->completeMultipartUpload([
+            'Bucket'          => $this->bucket,
+            'Key'             => $this->prefix . $key,
+            'UploadId'        => $uploadId,
+            'MultipartUpload' => ['Parts' => $parts],
+        ]);
+    }
+
+    public function abortMultipartUpload(string $key, string $uploadId): void
+    {
+        try {
+            $this->s3->abortMultipartUpload([
+                'Bucket'   => $this->bucket,
+                'Key'      => $this->prefix . $key,
+                'UploadId' => $uploadId,
+            ]);
+        } catch (S3Exception $e) {
+            // ignore if already gone
+        }
+    }
+
+    /**
+     * Aborts any multipart upload left incomplete by a previous attempt that
+     * got interrupted mid-assembly, so retries don't pile up abandoned
+     * uploads (and their storage cost) on every crash.
+     */
+    public function abortStaleMultipartUploads(string $key): void
+    {
+        try {
+            $result = $this->s3->listMultipartUploads([
+                'Bucket' => $this->bucket,
+                'Prefix' => $this->prefix . $key,
+            ]);
+
+            foreach ($result['Uploads'] ?? [] as $upload) {
+                if ($upload['Key'] === $this->prefix . $key) {
+                    $this->abortMultipartUpload($key, $upload['UploadId']);
+                }
+            }
+        } catch (S3Exception $e) {
+            // best-effort cleanup; a stale upload left behind isn't fatal
+        }
+    }
 }

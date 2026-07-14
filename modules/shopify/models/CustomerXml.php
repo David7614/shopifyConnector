@@ -14,10 +14,14 @@ class CustomerXml
     /**
      * @param Customers $customer
      * @param User $user
+     * @param array|null $fields_to_integrate Precomputed via getFieldsToIntegrate() — pass this in when
+     *   generating many entities for the same user/run to avoid re-querying config per record.
      */
-    public static function getEntity($customer, $user)
+    public static function getEntity($customer, $user, ?array $fields_to_integrate = null)
     {
-        $fields_to_integrate = self::getFieldsToIntegrate($user);
+        if ($fields_to_integrate === null) {
+            $fields_to_integrate = self::getFieldsToIntegrate($user);
+        }
 
         try {
             $customersXml = new SimpleXMLElement('<CUSTOMERS/>');

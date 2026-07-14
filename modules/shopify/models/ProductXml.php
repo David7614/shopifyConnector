@@ -14,8 +14,10 @@ class ProductXml
     /**
      * @param Product $product
      * @param User $user
+     * @param array|null $fields_to_integrate Precomputed via getFieldsToIntegrate() — pass this in when
+     *   generating many entities for the same user/run to avoid re-querying config per record.
      */
-    public static function getEntity($product, $user)
+    public static function getEntity($product, $user, ?array $fields_to_integrate = null)
     {
         try {
             $productsXml = new SimpleXMLElement('<PRODUCTS/>');
@@ -26,7 +28,9 @@ class ProductXml
             $productXml->addChild('TITLE', SambaHelper::sanitizeForXml($product->TITLE));
             $productXml->addChild('PRICE', (string) $product->PRICE);
 
-            $fields_to_integrate = self::getFieldsToIntegrate($user);
+            if ($fields_to_integrate === null) {
+                $fields_to_integrate = self::getFieldsToIntegrate($user);
+            }
 
             if (in_array('product_image', $fields_to_integrate) && !empty($product->IMAGE)) {
                 $productXml->addChild('IMAGE', $product->IMAGE);
