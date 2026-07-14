@@ -7,8 +7,15 @@ use yii\helpers\Url;
 /** @var app\models\User $user */
 /** @var Queue[] $queues */
 /** @var array $statusCounts */
+/** @var array $lastResets */
 /** @var string $typeFilter */
 /** @var string $statusFilter */
+
+$integrationTypeLabels = [
+    'product'  => 'Product',
+    'customer' => 'Customer',
+    'order'    => 'Order',
+];
 
 $statusLabels = [
     Queue::PENDING  => ['label' => 'Oczekuje',  'color' => '#888',    'bg' => '#eee'],
@@ -29,6 +36,36 @@ $statusLabels = [
         <?= implode('<br>', (array) $messages) ?>
     </div>
 <?php endforeach; ?>
+
+<!-- Reset integracji -->
+<div class="panel panel-default" style="margin-bottom:20px;">
+    <div class="panel-heading"><strong>Reset integracji</strong></div>
+    <div class="panel-body" style="padding:0;">
+        <table class="table table-sm" style="margin:0;">
+            <thead style="background:#f5f5f5;">
+                <tr><th>Typ</th><th>Ostatni reset</th><th>Akcja</th></tr>
+            </thead>
+            <tbody>
+                <?php foreach ($integrationTypeLabels as $t => $label): ?>
+                <tr>
+                    <td><?= $label ?></td>
+                    <td style="color:#666; font-size:12px;"><?= Html::encode($lastResets[$t] ?? 'nigdy') ?></td>
+                    <td>
+                        <?= Html::beginForm(Url::toRoute(['admin/reset-integration']), 'post', ['style' => 'display:inline']) ?>
+                        <?= Html::hiddenInput('id', $user->id) ?>
+                        <?= Html::hiddenInput('type', $t) ?>
+                        <?= Html::submitButton('Resetuj integrację', [
+                            'class'   => 'btn btn-xs btn-danger',
+                            'onclick' => 'return confirm("Zresetować integrację \'' . $label . '\' dla ' . $user->username . '? Import pójdzie od zera, jak dla nowego klienta.")',
+                        ]) ?>
+                        <?= Html::endForm() ?>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
 
 <!-- Status tiles -->
 <div class="row" style="margin-bottom:20px;">

@@ -281,6 +281,52 @@ class Queue extends \yii\db\ActiveRecord
     }
 
     /**
+     * Ensures there's something to run for this user/type right away — used
+     * by the admin "reset integration" action. If PENDING/RUNNING queues of
+     * this type already exist for the user, does nothing (avoids piling up
+     * duplicate queues). Otherwise creates the same two-phase pair
+     * prepareQueue() would (objects fetch + XML generation), dated today
+     * 01:00/01:10 so they're immediately due.
+     *
+     * @return bool True if new queue rows were created.
+     */
+    public static function ensureQueuedForType(string $type, int $user_id): bool
+    {
+        $alreadyQueued = self::find()
+            ->where(['current_integrate_user' => $user_id, 'integration_type' => $type])
+            ->andWhere(['in', 'integrated', [self::PENDING, self::RUNNING]])
+            ->exists();
+
+        if ($alreadyQueued) {
+            return false;
+        }
+
+        $today = date('Y-m-d');
+
+        $queue = new self();
+        $queue->current_integrate_user = $user_id;
+        $queue->integration_type       = $type;
+        $queue->integrated             = self::PENDING;
+        $queue->next_integration_date  = $today . ' 01:00:00';
+        $queue->page                   = 0;
+        $queue->max_page               = 0;
+        $queue->setAdditionalParameters([]);
+        $queue->save();
+
+        $queueXml = new self();
+        $queueXml->current_integrate_user = $user_id;
+        $queueXml->integration_type       = $type;
+        $queueXml->integrated             = self::PENDING;
+        $queueXml->next_integration_date  = $today . ' 01:10:00';
+        $queueXml->page                   = 0;
+        $queueXml->max_page               = 0;
+        $queueXml->setAdditionalParameters(['objects_done' => 1]);
+        $queueXml->save();
+
+        return true;
+    }
+
+    /**
      * @param string $type
      */
     public static function prepareQueue(string $type)

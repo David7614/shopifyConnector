@@ -36,6 +36,7 @@ class AdminController extends Controller
                 'class'   => VerbFilter::class,
                 'actions' => [
                     'reset-queue'          => ['post'],
+                    'reset-integration'    => ['post'],
                     'prepare-queue'        => ['post'],
                     'save-queues-autorefresh' => ['post'],
                     'save-queues-collapsed'   => ['post'],
@@ -151,10 +152,16 @@ class AdminController extends Controller
                 ->count();
         }
 
+        $lastResets = [];
+        foreach ([XmlFeed::PRODUCT, XmlFeed::CUSTOMER, XmlFeed::ORDER] as $t) {
+            $lastResets[$t] = IntegrationData::getLastResetDate($t, $user->id);
+        }
+
         return $this->render('view', [
             'user'         => $user,
             'queues'       => $queues,
             'statusCounts' => $statusCounts,
+            'lastResets'   => $lastResets,
             'typeFilter'   => $typeFilter,
             'statusFilter' => $statusFilter,
         ]);
@@ -264,6 +271,31 @@ class AdminController extends Controller
 
         $returnUrl = Yii::$app->request->referrer ?: Url::toRoute(['admin/queues']);
         return $this->redirect($returnUrl);
+    }
+
+    /**
+     * Resets a single integration type for a user: clears the incremental-fetch
+     * flags (so the next run pulls everything, like for a brand new customer)
+     * and, if nothing of this type is already queued, schedules a fresh
+     * fetch+XML pair for today at 01:00/01:10 so it runs right away.
+     */
+    public function actionResetIntegration(int $id, string $type)
+    {
+        $user = $this->findUser($id);
+
+        if (!in_array($type, [XmlFeed::PRODUCT, XmlFeed::CUSTOMER, XmlFeed::ORDER], true)) {
+            throw new NotFoundHttpException("Nieznany typ integracji: {$type}");
+        }
+
+        IntegrationData::resetIntegrationFlags($type, $user->id);
+        $queued = Queue::ensureQueuedForType($type, $user->id);
+
+        Yii::$app->session->addFlash('success', $queued
+            ? "Reset integracji „{$type}” wykonany — dodano nowe zadania do kolejki (start dziś 01:00)."
+            : "Reset integracji „{$type}” wykonany — w kolejce są już zadania tego typu, nowych nie dodano."
+        );
+
+        return $this->redirect(Url::toRoute(['admin/view', 'id' => $user->id]));
     }
 
     public function actionPrepareQueue()

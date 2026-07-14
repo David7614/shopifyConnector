@@ -170,7 +170,7 @@ class IntegrationData extends \yii\db\ActiveRecord
         // return self::find()->where(['task' => $key, 'customer_id' => $customer_id])->one();
     }
 
-    public static function removeData($key, $customer_id) 
+    public static function removeData($key, $customer_id)
     {
         $data = self::getData($key, $customer_id);
         if($data !== null) {
@@ -178,5 +178,36 @@ class IntegrationData extends \yii\db\ActiveRecord
         }
     }
 
+    /** @var array<string,string[]> Per-type flags that gate incremental fetching. */
+    private const INTEGRATION_FLAG_KEYS = [
+        'product'  => ['last_products_integration_date', 'INITIAL_PRODUCTS_DONE'],
+        'customer' => ['last_customer_integration_date', 'INITIAL_CUSTOMERS_DONE'],
+        'order'    => ['last_orders_integration_date', 'INITIAL_ORDERS_DONE'],
+    ];
 
+    /**
+     * Clears the flags that make a feed's Phase 1 fetch incremental, so the
+     * next run pulls everything again — same as a brand new customer would.
+     * Records the reset time so it can be shown back in the admin panel.
+     */
+    public static function resetIntegrationFlags(string $type, int $customer_id): void
+    {
+        foreach (self::INTEGRATION_FLAG_KEYS[$type] ?? [] as $key) {
+            self::removeData($key, $customer_id);
+        }
+
+        self::setData(self::lastResetKey($type), date('Y-m-d H:i:s'), $customer_id);
+    }
+
+    public static function getLastResetDate(string $type, int $customer_id): ?string
+    {
+        $value = self::getDataValue(self::lastResetKey($type), $customer_id);
+
+        return $value !== '' ? $value : null;
+    }
+
+    private static function lastResetKey(string $type): string
+    {
+        return "last_reset_{$type}_date";
+    }
 }
