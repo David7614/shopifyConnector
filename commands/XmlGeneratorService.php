@@ -39,6 +39,11 @@ class XmlGeneratorService
             $elapsed = time() - $start;
             echo "[{$type}] --- iteration #{$iterations} at {$elapsed}s ---" . PHP_EOL;
 
+            if (self::getLastestQueue($type, array_merge(['forceId' => 0], $config)) === null) {
+                echo "[{$type}] No queue found — stopping loop" . PHP_EOL;
+                break;
+            }
+
             $result = self::executeQueue($type, $config);
 
             $iterations++;
