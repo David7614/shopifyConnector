@@ -130,7 +130,7 @@ use \yii\helpers\Html;
                     <td>
                         <button class="copy-feed-btn" data-feed-url="<?php echo $urls['orders'] ?>">Skopiuj link</button>
                     </td>
-                    <td><?php echo $user->countDatabaseElements('order') ?></td>
+                    <td><?php echo $user->countDatabaseElements('orders') ?></td>
                     <td><?php echo $filesInfo['order']['status'] ?> <?php echo $filesInfo['order']['elements'] ?></td>
                 </tr>
                 <tr>
@@ -146,7 +146,7 @@ use \yii\helpers\Html;
                     <td>
                         <button class="copy-feed-btn" data-feed-url="<?php echo $urls['customers'] ?>">Skopiuj link</button>
                     </td>
-                    <td><?php echo $user->countDatabaseElements('customer') ?></td>
+                    <td><?php echo $user->countDatabaseElements('customers') ?></td>
                     <td><?php echo $filesInfo['customer']['status'] ?> <?php echo $filesInfo['customer']['elements'] ?></td>
                 </tr>
             </tbody>

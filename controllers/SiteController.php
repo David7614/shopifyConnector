@@ -172,42 +172,33 @@ class SiteController extends Controller
             return $this->redirect(Url::toRoute(['site/panel']));
         }
 
-        $xml_generator = new XmlFeed();
-        $xml_generator->setType('product');
-        $xml_generator->setUser($user);
-        $urls             = [];
-        $urls['products'] = $xml_generator->getFile(true, false);
-        $xml_generator->setType('customer');
-        $urls['customer'] = $xml_generator->getFile(true, false);
-        $xml_generator->setType('order');
-        $urls['order'] = $xml_generator->getFile(true, false);
-        $xml_generator->setType('category');
-        $urls['category'] = $xml_generator->getFile(true, false);
-
-        foreach ($urls as $type => $fileName) {
-            // echo "**** TYP ".$type.PHP_EOL;
-            // echo "plik ".$fileName.PHP_EOL;
-            // echo "Elementów w bazie: ".$user->countDatabaseElements($type).PHP_EOL;
-            $filesInfo[$type]           = [];
-            $filesInfo[$type]['status'] = 'gotowy';
-            if (! is_file($fileName)) {
-                $filesInfo[$type]['status']   = 'Nie gotowy';
-                $filesInfo[$type]['elements'] = 0;
-                // echo "BRAK PLIKU ".$fileName.PHP_EOL;
-            } else {
-                $xml     = file_get_contents($fileName);
-                $tagName = strtoupper($type);
-                if ($type == 'products') {
-                    $tagName = 'PRODUCT';
-                }
-                if ($type == 'category') {
-                    $tagName = 'ITEM';
-                }
-                $tag_count                    = substr_count($xml, "<" . $tagName . ">");
-                $filesInfo[$type]['elements'] = $tag_count;
-
-            }
+        // products/customer/order feeds are generated via MinIO (or local disk,
+        // whichever FeedStorageService::isConfigured() resolves to) — read
+        // through XmlFeed so this works on Heroku, where the feed file never
+        // sits on local disk.
+        $filesInfo = [];
+        foreach (['products' => 'products', 'customer' => 'customers', 'order' => 'orders'] as $key => $pluralType) {
+            $count = XmlFeed::countFeedRecords($user->uuid, $pluralType);
+            $filesInfo[$key] = [
+                'status'   => $count === null ? 'Nie gotowy' : 'gotowy',
+                'elements' => $count ?? 0,
+            ];
         }
+
+        // Category feed isn't part of the product/customer/order pipeline — still local-disk only.
+        $xml_generator = new XmlFeed();
+        $xml_generator->setType('category');
+        $xml_generator->setUser($user);
+        $categoryFile = $xml_generator->getFile(true, false);
+
+        $filesInfo['category'] = ['status' => 'Nie gotowy', 'elements' => 0];
+        if (is_file($categoryFile)) {
+            $filesInfo['category'] = [
+                'status'   => 'gotowy',
+                'elements' => substr_count(file_get_contents($categoryFile), '<ITEM>'),
+            ];
+        }
+
         $urls               = [];
         $urls['products']   = Url::home(true) . 'xml/' . $user->uuid . '/products.xml';
         $urls['customers']  = Url::home(true) . 'xml/' . $user->uuid . '/customers.xml';
