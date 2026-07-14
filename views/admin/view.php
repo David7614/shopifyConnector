@@ -11,6 +11,8 @@ use yii\helpers\Url;
 /** @var string $typeFilter */
 /** @var string $statusFilter */
 
+$this->title = 'Kolejki — ' . $user->username;
+
 $integrationTypeLabels = [
     'product'  => 'Product',
     'customer' => 'Customer',

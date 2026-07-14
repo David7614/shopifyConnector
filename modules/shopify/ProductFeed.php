@@ -29,10 +29,6 @@ class ProductFeed extends XmlFeed
 
     public function generate($processType = null): int
     {
-        if ($this->_user->config->get('feed_enabled') == 0) {
-            throw new Exception('Feed disabled');
-        }
-
         if ($processType == 'objects') {
             return $this->processData();
         }

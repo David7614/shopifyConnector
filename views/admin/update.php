@@ -7,6 +7,8 @@ use app\models\IntegrationData;
 /** @var app\models\User $user */
 /** @var array $feedUrls */
 /** @var array $xmlCounts */
+
+$this->title = 'Ustawienia — ' . $user->username;
 ?>
 
 <div style="display:flex; align-items:center; justify-content:space-between; margin:20px 0 16px;">

@@ -6,6 +6,8 @@ use yii\helpers\Url;
 /** @var yii\web\View $this */
 /** @var app\models\User[] $users */
 /** @var array $summary */
+
+$this->title = 'Użytkownicy';
 ?>
 
 <style>

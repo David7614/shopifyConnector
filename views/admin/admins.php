@@ -5,6 +5,8 @@ use yii\helpers\Url;
 /** @var yii\web\View $this */
 /** @var app\models\User[] $admins */
 /** @var string|null $error */
+
+$this->title = 'Administratorzy';
 ?>
 
 <div style="display:flex; align-items:center; justify-content:space-between; margin:20px 0 16px;">

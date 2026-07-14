@@ -74,15 +74,23 @@ class Queue extends \yii\db\ActiveRecord
     }
 
     public function checkQueueConstraints() {
-        if (!$this->getCurrentUser()->active) {
+        $user = $this->getCurrentUser();
+
+        if (!$user->active) {
             // echo "non active";
             return false;
         }
 
-        $disabled = DisabledFeeds::find()->where(['user_id' => $this->getCurrentUser()->id, 'integration_type' => $this->integration_type])->one();
+        $disabled = DisabledFeeds::find()->where(['user_id' => $user->id, 'integration_type' => $this->integration_type])->one();
 
         if ($disabled) {
             // echo "disabled feed";
+            return false;
+        }
+
+        $feedEnabled = $user->config->get('feed_enabled');
+        if ($feedEnabled !== null && (int) $feedEnabled === 0) {
+            // echo "feed_enabled=0";
             return false;
         }
 

@@ -5,6 +5,8 @@ use yii\helpers\Url;
 /** @var yii\web\View $this */
 /** @var array|object $initialStates */
 /** @var array|object $collapsedSections */
+
+$this->title = 'Monitor kolejek';
 ?>
 
 <style>
