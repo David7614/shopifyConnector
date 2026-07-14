@@ -10,6 +10,8 @@ use app\modules\shopify\ProductFeed;
 use app\modules\shopify\CustomerFeed;
 use app\modules\shopify\OrderFeed;
 use app\modules\xml_generator\helper\SambaHelper;
+use app\services\FeedStorageService;
+use Throwable;
 
 /**
  * Class XmlFeed
@@ -119,6 +121,59 @@ class XmlFeed implements FeedGenerator
             return rtrim($env, '/');
         }
         return \Yii::getAlias('@runtime') . '/feeds';
+    }
+
+    /** @var array<string,string> Plural feed type => its XML record tag name. */
+    public static array $recordTagNames = [
+        'products'  => 'PRODUCT',
+        'customers' => 'CUSTOMER',
+        'orders'    => 'ORDER',
+    ];
+
+    /**
+     * Reads a generated feed's raw XML content, wherever it currently lives
+     * (MinIO or local disk), or null if it hasn't been generated yet.
+     *
+     * @param string $type Plural feed type: products|customers|orders
+     */
+    public static function readFeedContent(string $uuid, string $type): ?string
+    {
+        $singular = rtrim($type, 's');
+
+        if (FeedStorageService::isConfigured()) {
+            try {
+                $storage = FeedStorageService::create();
+                $key = $singular . '/' . $uuid . '/' . $singular . '.xml';
+                return $storage->exists($key) ? $storage->get($key) : null;
+            } catch (Throwable $e) {
+                return null;
+            }
+        }
+
+        $path = self::getFeedsBasePath() . '/' . $singular . '/' . $uuid . '/' . $singular . '.xml';
+
+        return is_file($path) ? file_get_contents($path) : null;
+    }
+
+    /**
+     * Counts how many records are actually present in the generated feed
+     * file — as opposed to how many rows exist in MySQL, which only tells
+     * you what's queued to be exported, not what's actually in the XML.
+     *
+     * @param string $type Plural feed type: products|customers|orders
+     * @return int|null Null if the feed hasn't been generated yet.
+     */
+    public static function countFeedRecords(string $uuid, string $type): ?int
+    {
+        $tagName = self::$recordTagNames[$type] ?? null;
+
+        if ($tagName === null) {
+            return null;
+        }
+
+        $xml = self::readFeedContent($uuid, $type);
+
+        return $xml === null ? null : substr_count($xml, "<{$tagName}>");
     }
 
     public function getFile(bool $get_file_path = false, bool $temp = false): string

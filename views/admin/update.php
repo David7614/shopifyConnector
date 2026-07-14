@@ -6,6 +6,7 @@ use app\models\IntegrationData;
 /** @var yii\web\View $this */
 /** @var app\models\User $user */
 /** @var array $feedUrls */
+/** @var array $xmlCounts */
 ?>
 
 <div style="display:flex; align-items:center; justify-content:space-between; margin:20px 0 16px;">
@@ -53,23 +54,26 @@ use app\models\IntegrationData;
             <div class="panel-body" style="padding:0;">
                 <table class="table table-sm" style="margin:0;">
                     <thead style="background:#f5f5f5;">
-                        <tr><th>Typ</th><th>URL</th><th>Rekordy w DB</th></tr>
+                        <tr><th>Typ</th><th>URL</th><th>Rekordy w DB</th><th>Rekordy w XML</th></tr>
                     </thead>
                     <tbody>
                         <tr>
                             <td>Products</td>
                             <td><a href="<?= Html::encode($feedUrls['products']) ?>" target="_blank" class="small">link</a></td>
                             <td><?= $user->countDatabaseElements('products') ?></td>
+                            <td><?= $xmlCounts['products'] ?? '—' ?></td>
                         </tr>
                         <tr>
                             <td>Customers</td>
                             <td><a href="<?= Html::encode($feedUrls['customers']) ?>" target="_blank" class="small">link</a></td>
-                            <td><?= $user->countDatabaseElements('customer') ?></td>
+                            <td><?= $user->countDatabaseElements('customers') ?></td>
+                            <td><?= $xmlCounts['customers'] ?? '—' ?></td>
                         </tr>
                         <tr>
                             <td>Orders</td>
                             <td><a href="<?= Html::encode($feedUrls['orders']) ?>" target="_blank" class="small">link</a></td>
-                            <td><?= $user->countDatabaseElements('order') ?></td>
+                            <td><?= $user->countDatabaseElements('orders') ?></td>
+                            <td><?= $xmlCounts['orders'] ?? '—' ?></td>
                         </tr>
                     </tbody>
                 </table>

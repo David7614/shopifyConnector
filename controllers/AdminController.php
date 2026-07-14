@@ -63,8 +63,8 @@ class AdminController extends Controller
                 'lastFinished' => $lastQueue ? $lastQueue->finished_at : null,
                 'counts'       => [
                     'product'  => $user->countDatabaseElements('products'),
-                    'customer' => $user->countDatabaseElements('customer'),
-                    'order'    => $user->countDatabaseElements('order'),
+                    'customer' => $user->countDatabaseElements('customers'),
+                    'order'    => $user->countDatabaseElements('orders'),
                 ],
                 'errors' => Queue::find()
                     ->where(['current_integrate_user' => $user->id, 'integrated' => Queue::ERROR])
@@ -107,9 +107,15 @@ class AdminController extends Controller
 
         $feedUrls = $this->buildFeedUrls($user);
 
+        $xmlCounts = [];
+        foreach (array_keys($feedUrls) as $type) {
+            $xmlCounts[$type] = XmlFeed::countFeedRecords($user->uuid, $type);
+        }
+
         return $this->render('update', [
-            'user'     => $user,
-            'feedUrls' => $feedUrls,
+            'user'      => $user,
+            'feedUrls'  => $feedUrls,
+            'xmlCounts' => $xmlCounts,
         ]);
     }
 
@@ -282,8 +288,8 @@ class AdminController extends Controller
 
         return [
             'product'  => $user->countDatabaseElements('products'),
-            'customer' => $user->countDatabaseElements('customer'),
-            'order'    => $user->countDatabaseElements('order'),
+            'customer' => $user->countDatabaseElements('customers'),
+            'order'    => $user->countDatabaseElements('orders'),
         ];
     }
 
