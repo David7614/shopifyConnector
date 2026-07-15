@@ -337,7 +337,7 @@ class AdminController extends Controller
     {
         $auth    = Yii::$app->authManager;
         $adminRole = $auth->getRole('admin');
-        $adminIds = $adminRole ? array_keys($auth->getUserIdsByRole('admin')) : [];
+        $adminIds = $adminRole ? $auth->getUserIdsByRole('admin') : [];
         $admins  = $adminIds ? User::find()->where(['id' => $adminIds])->all() : [];
 
         $error = null;
@@ -351,13 +351,16 @@ class AdminController extends Controller
                 $password = Yii::$app->request->post('password', '');
 
                 $user = new User();
-                $user->register($username, $email, $password);
 
-                if ($user->save()) {
+                try {
+                    $user->register($username, $email, $password);
+                    $user->user_type = 'admin';
+                    $user->save(false);
+
                     $auth->assign($auth->getRole('admin'), $user->id);
                     Yii::$app->session->addFlash('success', "Administrator {$username} dodany");
-                } else {
-                    $error = 'Błąd zapisu: ' . json_encode($user->errors);
+                } catch (\Exception $e) {
+                    $error = 'Błąd zapisu: ' . $e->getMessage();
                 }
             }
 

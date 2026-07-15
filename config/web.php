@@ -27,7 +27,7 @@ $config = [
             'cookieValidationKey' => getenv('YII_COOKIE_KEY') ?: '0vR308SsCEt2ykxnhf8gNSAkTj1N_6Xo',
         ],
         'authManager'  => [
-            'class'        => 'yii\rbac\PhpManager',
+            'class'        => 'yii\rbac\DbManager',
             'defaultRoles' => ['end-user'],
         ],
         'cache'        => [
