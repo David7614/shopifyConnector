@@ -44,7 +44,7 @@ class ProductXml
                 $productXml->addChild('BRAND', $product->BRAND);
             }
 
-            if (in_array('product_stock', $fields_to_integrate) && !empty($product->STOCK)) {
+            if (in_array('product_stock', $fields_to_integrate)) {
                 $productXml->addChild('STOCK', (string) $product->STOCK);
             }
 
@@ -99,7 +99,7 @@ class ProductXml
                             $variantXml->addChild('DESCRIPTION', SambaHelper::sanitizeForXml($variant['DESCRIPTION']));
                         }
 
-                        if (in_array('product_stock', $fields_to_integrate) && !empty($variant['STOCK'])) {
+                        if (in_array('product_stock', $fields_to_integrate) && isset($variant['STOCK'])) {
                             $variantXml->addChild('STOCK', (string) $variant['STOCK']);
                         }
 
