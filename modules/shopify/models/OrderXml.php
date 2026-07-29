@@ -63,6 +63,9 @@ class OrderXml
             foreach ($positions as $product) {
                 $orderItem = $orderItems->addChild('ITEM');
                 $orderItem->addChild('PRODUCT_ID', $product['product_id']);
+                if (!empty($product['original_product_id'])) {
+                    $orderItem->addChild('ORIGINAL_PRODUCT_ID', $product['original_product_id']);
+                }
                 $orderItem->addChild('AMOUNT', (string) $product['amount']);
                 $orderItem->addChild('PRICE', (string) $product['price']);
             }

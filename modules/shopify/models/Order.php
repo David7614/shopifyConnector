@@ -114,6 +114,21 @@ class Order
         return (string) end($parts);
     }
 
+    private function getPositionMainProductId($position)
+    {
+        if (!$position['product']) {
+            return null;
+        }
+
+        $parts = explode('/', $position['product']['id']);
+        return (string) end($parts);
+    }
+
+    private function isPositionSingleVariantProduct($position)
+    {
+        return !empty($position['product']['hasOnlyDefaultVariant']);
+    }
+
     private function getPositionPrice($position)
     {
         if (
@@ -143,8 +158,12 @@ class Order
                 continue;
             }
 
+            $mainId = $this->getPositionMainProductId($product);
+            $useMainId = $this->isPositionSingleVariantProduct($product) && $mainId;
+
             $positions[] = [
-                'product_id' => $id,
+                'product_id' => $useMainId ? $mainId : $id,
+                'original_product_id' => $id,
                 'amount' => $product['quantity'],
                 'price' => $price,
             ];

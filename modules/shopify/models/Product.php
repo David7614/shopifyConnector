@@ -169,6 +169,10 @@ class Product
 
     private function getVariantTitle($variant)
     {
+        if ($variant['title'] === 'Default Title') {
+            return $this->getTitle();
+        }
+
         return $variant['title'];
     }
 

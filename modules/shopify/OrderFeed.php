@@ -446,6 +446,10 @@ class OrderFeed extends XmlFeed
                                         id
                                         title
                                     }
+                                    product {
+                                        id
+                                        hasOnlyDefaultVariant
+                                    }
                                 }
                             }
                         }
@@ -520,6 +524,10 @@ class OrderFeed extends XmlFeed
                                     variant {
                                         id
                                         title
+                                    }
+                                    product {
+                                        id
+                                        hasOnlyDefaultVariant
                                     }
                                 }
                             }
