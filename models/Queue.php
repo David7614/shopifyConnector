@@ -290,22 +290,28 @@ class Queue extends \yii\db\ActiveRecord
 
     /**
      * Ensures there's something to run for this user/type right away — used
-     * by the admin "reset integration" action. If PENDING/RUNNING queues of
-     * this type already exist for the user, does nothing (avoids piling up
-     * duplicate queues). Otherwise creates the same two-phase pair
-     * prepareQueue() would (objects fetch + XML generation), dated today
-     * 01:00/01:10 so they're immediately due.
+     * by the admin "reset integration" action. If a PENDING/RUNNING queue of
+     * this type is already due now (next_integration_date <= now), does
+     * nothing: that pending run will pick up the reset (the incremental-fetch
+     * flags live per user+type in integration_data, so any Phase 1 run of this
+     * type does the full re-fetch once they're cleared). Queues scheduled for
+     * the future don't count — otherwise prepareQueue's pre-populated entries
+     * would always block and the reset would never run right away. When there's
+     * nothing due, creates the same two-phase pair prepareQueue() would
+     * (objects fetch + XML generation), dated today 01:00/01:10 so they're
+     * immediately due.
      *
      * @return bool True if new queue rows were created.
      */
     public static function ensureQueuedForType(string $type, int $user_id): bool
     {
-        $alreadyQueued = self::find()
+        $alreadyDue = self::find()
             ->where(['current_integrate_user' => $user_id, 'integration_type' => $type])
             ->andWhere(['in', 'integrated', [self::PENDING, self::RUNNING]])
+            ->andWhere(['<=', 'next_integration_date', self::getCurrentDateTime()])
             ->exists();
 
-        if ($alreadyQueued) {
+        if ($alreadyDue) {
             return false;
         }
 
