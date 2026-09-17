@@ -10,6 +10,7 @@ use yii\web\IdentityInterface;
  *
  * @property int $id
  * @property string $username
+ * @property string $fronturl
  * @property string $email
  * @property string $password
  * @property string $client_id
@@ -37,7 +38,7 @@ class User extends \yii\db\ActiveRecord implements IdentityInterface
         return [
             [['id', 'username', 'email', 'password', 'client_id', 'client_secret'], 'required'],
             [['id', 'active'], 'integer'],
-            [['username', 'email', 'password', 'client_id', 'client_secret', 'register_date', 'registerToken', 'uuid'], 'string', 'max' => 255],
+            [['username', 'fronturl', 'email', 'password', 'client_id', 'client_secret', 'register_date', 'registerToken', 'uuid'], 'string', 'max' => 255],
             [['shop_type'], 'string', 'max' => 10],
         ];
     }
@@ -298,6 +299,25 @@ class User extends \yii\db\ActiveRecord implements IdentityInterface
     {
         $url = $this->fronturl ? $this->fronturl : $this->username;
         return 'https://' . $url;
+    }
+
+    /**
+     * Zapisuje host domeny publicznej sklepu (sam host, bez schematu i slasha).
+     * Puste wejście nie kasuje wcześniejszej wartości - fallback na domenę
+     * techniczną w getUrl() ma zadziałać tylko dopóki hosta w ogóle nie znamy.
+     */
+    public function updateFrontUrl($host)
+    {
+        $host = trim((string) $host);
+        $host = preg_replace('#^https?://#i', '', $host);
+        $host = rtrim($host, '/');
+
+        if ($host === '' || $host === $this->fronturl) {
+            return;
+        }
+
+        $this->fronturl = $host;
+        $this->save(false, ['fronturl']);
     }
 
     // public function getConnectionClass(){

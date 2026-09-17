@@ -70,17 +70,11 @@ class Product
 
     private function getProductUrl()
     {
-        $session = $this->user->getSession();
-
-        if (!$session) {
-            return '';
-        }
-
         if (!$this->product['handle']) {
             return '';
         }
 
-        return "https://" . $session->getShop() . "/products/" . $this->product['handle']; 
+        return $this->user->getUrl() . "/products/" . $this->product['handle'];
     }
 
     private function getImage()

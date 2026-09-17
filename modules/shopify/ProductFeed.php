@@ -740,6 +740,29 @@ class ProductFeed extends XmlFeed
         }
     }
 
+    /**
+     * URL produktu trafia do bazy już w fazie 1, więc publiczna domena sklepu
+     * musi być znana zanim polecą pierwsze produkty. Odpytujemy raz na przebieg
+     * kolejki (page 0), żeby złapać zmianę domeny przez merchanta bez dokładania
+     * zapytania do każdej strony paginacji.
+     */
+    private function refreshFrontUrl(): void
+    {
+        if ($this->_queue->page > 0) {
+            return;
+        }
+
+        try {
+            $result = $this->client->GraphQL->post('{ shop { primaryDomain { host } } }');
+
+            $host = $result['data']['shop']['primaryDomain']['host'] ?? '';
+
+            $this->_user->updateFrontUrl($host);
+        } catch (Exception $e) {
+            // Brak hosta nie może wywrócić syncu - getUrl() zostaje na domenie technicznej.
+        }
+    }
+
     private function processData()
     {
         $session = $this->_user->getSession();
@@ -749,6 +772,8 @@ class ProductFeed extends XmlFeed
         }
 
         $this->client = ApiClient::getClient($session);
+
+        $this->refreshFrontUrl();
 
         $this->checkExportType();
 
