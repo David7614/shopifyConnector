@@ -40,6 +40,7 @@ $this->title = 'Użytkownicy';
         <tr>
             <th>ID</th>
             <th>Shop</th>
+            <th>Front URL</th>
             <th>Aktywny</th>
             <th>Ostatnia sync.</th>
             <th>Feedy</th>
@@ -53,6 +54,13 @@ $this->title = 'Użytkownicy';
         <tr>
             <td style="color:#999; font-size:12px;"><?= $user->id ?></td>
             <td><?= Html::encode($user->username) ?></td>
+            <td style="font-size:12px;">
+                <?php if ($user->fronturl): ?>
+                    <?= Html::a(Html::encode($user->fronturl), $user->getUrl(), ['target' => '_blank', 'rel' => 'noopener']) ?>
+                <?php else: ?>
+                    <span style="color:#bbb;" title="Nie pobrano jeszcze domeny publicznej — feed używa domeny technicznej">—</span>
+                <?php endif ?>
+            </td>
             <td>
                 <?php if ($user->active): ?>
                     <span style="color:#2e7d32;">&#9679;</span> <span style="color:#2e7d32;">Aktywny</span>
