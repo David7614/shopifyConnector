@@ -11,6 +11,32 @@ use yii\console\ExitCode;
 
 class XmlGeneratorService
 {
+    /**
+     * How many failing queues in a row end the loop. A failing queue is normally
+     * marked ERROR and drops out of the pool, so reaching this many in a row
+     * means something systemic is wrong (storage, API) and grinding through the
+     * rest of the window would only pile up errors.
+     */
+    const MAX_CONSECUTIVE_FAILURES = 10;
+
+    /**
+     * Decides whether a failed iteration should end the loop.
+     *
+     * Hitting the same queue twice in a row means it failed without being taken
+     * out of the pool, so the next iteration would pick it again - that is a
+     * spin, and it stops immediately. Distinct failures only stop the loop once
+     * they pile up, so one broken shop no longer costs every other shop the
+     * remainder of the run.
+     */
+    public static function shouldStopAfterFailure(int $consecutiveFailures, bool $sameQueueAsPrevious): bool
+    {
+        if ($sameQueueAsPrevious) {
+            return true;
+        }
+
+        return $consecutiveFailures >= self::MAX_CONSECUTIVE_FAILURES;
+    }
+
     public static function getLastestQueue(string $type, array $config = [])
     {
         if ($config['forceId'] !== 0) {
@@ -32,6 +58,8 @@ class XmlGeneratorService
     {
         $start = time();
         $iterations = 0;
+        $consecutiveFailures = 0;
+        $lastFailedQueueId = null;
 
         echo "[{$type}] Loop started, will run for up to {$maxSeconds}s" . PHP_EOL;
 
@@ -39,18 +67,35 @@ class XmlGeneratorService
             $elapsed = time() - $start;
             echo "[{$type}] --- iteration #{$iterations} at {$elapsed}s ---" . PHP_EOL;
 
-            if (self::getLastestQueue($type, array_merge(['forceId' => 0], $config)) === null) {
+            $queue = self::getLastestQueue($type, array_merge(['forceId' => 0], $config));
+
+            if ($queue === null) {
                 echo "[{$type}] No queue found — stopping loop" . PHP_EOL;
                 break;
             }
+
+            $queueId = $queue->id;
 
             $result = self::executeQueue($type, $config);
 
             $iterations++;
 
             if ($result === ExitCode::UNSPECIFIED_ERROR) {
-                echo "[{$type}] Queue error — stopping loop" . PHP_EOL;
-                break;
+                $sameQueueAsPrevious = $queueId === $lastFailedQueueId;
+                $consecutiveFailures++;
+                $lastFailedQueueId = $queueId;
+
+                if (self::shouldStopAfterFailure($consecutiveFailures, $sameQueueAsPrevious)) {
+                    echo $sameQueueAsPrevious
+                        ? "[{$type}] Queue #{$queueId} failed twice in a row without leaving the pool — stopping loop" . PHP_EOL
+                        : "[{$type}] {$consecutiveFailures} queues failed in a row — stopping loop" . PHP_EOL;
+                    break;
+                }
+
+                echo "[{$type}] Queue #{$queueId} failed ({$consecutiveFailures} in a row) — moving on to the next queue" . PHP_EOL;
+            } else {
+                $consecutiveFailures = 0;
+                $lastFailedQueueId = null;
             }
 
             // brief pause to avoid hammering DB between iterations
