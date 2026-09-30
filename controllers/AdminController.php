@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace app\controllers;
 
+use app\commands\XmlGeneratorService;
+use app\models\DisabledFeeds;
 use app\models\IntegrationData;
 use app\models\Queue;
 use app\models\User;
@@ -39,6 +41,7 @@ class AdminController extends Controller
                 'actions' => [
                     'reset-queue'          => ['post'],
                     'reset-integration'    => ['post'],
+                    'enable-feed'          => ['post'],
                     'prepare-queue'        => ['post'],
                     'save-queues-autorefresh' => ['post'],
                     'save-queues-collapsed'   => ['post'],
@@ -228,13 +231,19 @@ class AdminController extends Controller
             $lastResets[$t] = IntegrationData::getLastResetDate($t, $user->id);
         }
 
+        $disabledFeeds = DisabledFeeds::find()
+            ->where(['user_id' => $user->id])
+            ->indexBy('integration_type')
+            ->all();
+
         return $this->render('view', [
-            'user'         => $user,
-            'queues'       => $queues,
-            'statusCounts' => $statusCounts,
-            'lastResets'   => $lastResets,
-            'typeFilter'   => $typeFilter,
-            'statusFilter' => $statusFilter,
+            'user'          => $user,
+            'queues'        => $queues,
+            'statusCounts'  => $statusCounts,
+            'lastResets'    => $lastResets,
+            'disabledFeeds' => $disabledFeeds,
+            'typeFilter'    => $typeFilter,
+            'statusFilter'  => $statusFilter,
         ]);
     }
 
@@ -370,6 +379,33 @@ class AdminController extends Controller
             ? "Reset integracji „{$type}” wykonany — dodano nowe zadania do kolejki (start dziś 01:00)."
             : "Reset integracji „{$type}” wykonany — w kolejce są już zadania tego typu ({$cleared} wyczyszczono ze stanu pobierania), nowych nie dodano."
         );
+
+        return $this->redirect(Url::toRoute(['admin/view', 'id' => $user->id]));
+    }
+
+    /**
+     * Turns a feed back on after it was switched off - by the automatic
+     * permanent-failure guard, or by hand. Also clears the failure streak, so
+     * the shop starts from a clean slate rather than one strike from being
+     * disabled again.
+     */
+    public function actionEnableFeed()
+    {
+        $id = (int) Yii::$app->request->post('id');
+        $type = (string) Yii::$app->request->post('type');
+
+        $user = $this->findUser($id);
+
+        if (!in_array($type, [XmlFeed::PRODUCT, XmlFeed::CUSTOMER, XmlFeed::ORDER], true)) {
+            throw new NotFoundHttpException("Nieznany typ integracji: {$type}");
+        }
+
+        if (DisabledFeeds::enable($user->id, $type)) {
+            IntegrationData::removeData(XmlGeneratorService::permanentFailureKey($type), $user->id);
+            Yii::$app->session->addFlash('success', "Feed „{$type}” włączony ponownie.");
+        } else {
+            Yii::$app->session->addFlash('error', "Feed „{$type}” nie był wyłączony.");
+        }
 
         return $this->redirect(Url::toRoute(['admin/view', 'id' => $user->id]));
     }

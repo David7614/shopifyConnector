@@ -90,4 +90,17 @@ class XmlGeneratorRetryPolicyTest extends Unit
     {
         $this->assertSame(XmlGeneratorService::BACKOFF_BASE_SECONDS, XmlGeneratorService::backoffSeconds(0));
     }
+
+    /** Streaks are counted per feed type, so the keys must not collide. */
+    public function testPermanentFailureKeysAreDistinctPerType()
+    {
+        $keys = [
+            XmlGeneratorService::permanentFailureKey('product'),
+            XmlGeneratorService::permanentFailureKey('customer'),
+            XmlGeneratorService::permanentFailureKey('order'),
+        ];
+
+        $this->assertSame($keys, array_unique($keys));
+        $this->assertSame('permanent_failures_product', $keys[0]);
+    }
 }

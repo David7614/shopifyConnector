@@ -45,14 +45,38 @@ $statusLabels = [
     <div class="panel-body" style="padding:0;">
         <table class="table table-sm" style="margin:0;">
             <thead style="background:#f5f5f5;">
-                <tr><th>Typ</th><th>Ostatni reset</th><th>Akcja</th></tr>
+                <tr><th>Typ</th><th>Ostatni reset</th><th>Stan</th><th>Akcja</th></tr>
             </thead>
             <tbody>
                 <?php foreach ($integrationTypeLabels as $t => $label): ?>
-                <tr>
+                <?php $disabled = $disabledFeeds[$t] ?? null; ?>
+                <tr<?= $disabled ? ' style="background:#fff8f8;"' : '' ?>>
                     <td><?= $label ?></td>
                     <td style="color:#666; font-size:12px;"><?= Html::encode($lastResets[$t] ?? 'nigdy') ?></td>
+                    <td style="font-size:12px;">
+                        <?php if ($disabled): ?>
+                            <span style="display:inline-block; padding:1px 6px; border-radius:3px; font-size:10px; color:#fff; background:#b71c1c;">
+                                <?= $disabled->disabled_by === \app\models\DisabledFeeds::BY_AUTO ? 'WYŁĄCZONY AUTOMATYCZNIE' : 'WYŁĄCZONY RĘCZNIE' ?>
+                            </span>
+                            <div style="color:#c62828; margin-top:2px;"><?= Html::encode($disabled->reason ?: 'bez podanego powodu') ?></div>
+                            <?php if ($disabled->disabled_at): ?>
+                                <small style="color:#999;"><?= Html::encode($disabled->disabled_at) ?></small>
+                            <?php endif ?>
+                        <?php else: ?>
+                            <span style="color:#4caf50;">aktywny</span>
+                        <?php endif ?>
+                    </td>
                     <td>
+                        <?php if ($disabled): ?>
+                            <?= Html::beginForm(Url::toRoute(['admin/enable-feed']), 'post', ['style' => 'display:inline']) ?>
+                            <?= Html::hiddenInput('id', $user->id) ?>
+                            <?= Html::hiddenInput('type', $t) ?>
+                            <?= Html::submitButton('Włącz ponownie', [
+                                'class'   => 'btn btn-xs btn-success',
+                                'onclick' => 'return confirm("Włączyć feed \'' . $label . '\' dla ' . $user->username . '?")',
+                            ]) ?>
+                            <?= Html::endForm() ?>
+                        <?php endif ?>
                         <?= Html::beginForm(Url::toRoute(['admin/reset-integration']), 'post', ['style' => 'display:inline']) ?>
                         <?= Html::hiddenInput('id', $user->id) ?>
                         <?= Html::hiddenInput('type', $t) ?>

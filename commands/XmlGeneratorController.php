@@ -6,6 +6,7 @@ namespace app\commands;
 use app\models\Queue;
 use app\modules\xml_generator\src\XmlFeed;
 use yii\console\Controller;
+use yii\console\ExitCode;
 
 class XmlGeneratorController extends Controller
 {
@@ -75,5 +76,32 @@ class XmlGeneratorController extends Controller
     public function actionLoopOrders()
     {
         return XmlGeneratorService::loopQueue(XmlFeed::ORDER, ['shop_type' => 'shopify']);
+    }
+
+    /**
+     * Asks every shop whether it is still there.
+     *
+     * The app/uninstalled webhook only covers shops whose owner uninstalled the
+     * app. A shop that was closed, frozen or expired never sends anything - it
+     * just starts answering "Unavailable Shop", and until now that surfaced
+     * only as failing queues. Run it from the scheduler once a day.
+     *
+     * @param int $fix Pass 1 to disable the feeds of unreachable shops.
+     */
+    public function actionCheckShops($fix = 0)
+    {
+        $report = XmlGeneratorService::checkShops((bool) $fix);
+
+        echo PHP_EOL;
+        echo sprintf(
+            "Sprawdzono %d sklepów: %d OK, %d niedostępnych, %d bez sesji.%s",
+            $report['total'],
+            $report['ok'],
+            $report['unreachable'],
+            $report['no_session'],
+            PHP_EOL
+        );
+
+        return $report['unreachable'] === 0 ? ExitCode::OK : ExitCode::UNSPECIFIED_ERROR;
     }
 }

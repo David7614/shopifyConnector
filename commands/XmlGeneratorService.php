@@ -5,7 +5,11 @@ namespace app\commands;
 
 use DateTime;
 use Exception;
+use app\models\DisabledFeeds;
+use app\models\IntegrationData;
 use app\models\Queue;
+use app\models\User;
+use app\modules\shopify\ApiClient;
 use app\modules\xml_generator\src\XmlFeed;
 use yii\console\ExitCode;
 
@@ -33,6 +37,14 @@ class XmlGeneratorService
     /** Backoff bounds, in seconds. */
     const BACKOFF_BASE_SECONDS = 300;
     const BACKOFF_MAX_SECONDS = 21600;
+
+    /**
+     * How many queues in a row may be parked with a permanent error before the
+     * feed is switched off. Queues are created daily, so this is roughly three
+     * days of a shop being gone - long enough not to react to a weekend outage,
+     * short enough not to grind for weeks like shop 146 did.
+     */
+    const PERMANENT_FAILURES_BEFORE_DISABLE = 3;
 
     /**
      * Sorts a failure message into something the retry policy can act on.
@@ -90,6 +102,16 @@ class XmlGeneratorService
         return self::ERROR_UNKNOWN;
     }
 
+    /**
+     * Counter key for consecutive permanently-failed queues of one type. Kept
+     * in integration_data rather than in the queue's serialized parameters,
+     * which cannot be queried across queues.
+     */
+    public static function permanentFailureKey(string $type): string
+    {
+        return 'permanent_failures_' . $type;
+    }
+
     /** How many attempts a queue of this error kind gets before it is parked. */
     public static function maxAttemptsFor(string $kind): int
     {
@@ -133,6 +155,110 @@ class XmlGeneratorService
         }
 
         return $consecutiveFailures >= self::MAX_CONSECUTIVE_FAILURES;
+    }
+
+    /**
+     * Counts one more permanently-failed queue for this shop and switches the
+     * feed off once they pile up. Without this a shop that no longer exists
+     * keeps getting fresh queues every single day, forever.
+     */
+    private static function handlePermanentFailure(string $type, User $user, string $message): void
+    {
+        $key = self::permanentFailureKey($type);
+        $failures = (int) IntegrationData::getDataValue($key, $user->id) + 1;
+
+        IntegrationData::setData($key, (string) $failures, $user->id);
+
+        echo "[{$type}] Permanent failure {$failures}/" . self::PERMANENT_FAILURES_BEFORE_DISABLE
+            . " for {$user->username}" . PHP_EOL;
+
+        if ($failures < self::PERMANENT_FAILURES_BEFORE_DISABLE) {
+            return;
+        }
+
+        $reason = sprintf('%s (%d kolejki z rzędu, ostatnia %s)', $message, $failures, date('Y-m-d H:i'));
+
+        if (DisabledFeeds::disable($user->id, $type, $reason, DisabledFeeds::BY_AUTO)) {
+            echo "[{$type}] Feed disabled for {$user->username}: {$message}" . PHP_EOL;
+        }
+    }
+
+    /** Clears the permanent-failure streak after anything goes through. */
+    private static function noteSuccess(string $type, int $userId): void
+    {
+        IntegrationData::removeData(self::permanentFailureKey($type), $userId);
+    }
+
+    /**
+     * Pings every shop with the cheapest query there is and reports which ones
+     * no longer answer.
+     *
+     * @param bool $fix Disable the feeds of unreachable shops.
+     * @return array{total:int,ok:int,unreachable:int,no_session:int,shops:array}
+     */
+    public static function checkShops(bool $fix = false): array
+    {
+        $report = ['total' => 0, 'ok' => 0, 'unreachable' => 0, 'no_session' => 0, 'shops' => []];
+
+        $users = User::find()->where(['shop_type' => 'shopify', 'active' => 1])->orderBy(['id' => SORT_ASC])->all();
+
+        foreach ($users as $user) {
+            $report['total']++;
+
+            $session = $user->getSession();
+
+            if (!$session) {
+                $report['no_session']++;
+                $report['shops'][] = ['id' => $user->id, 'shop' => $user->username, 'status' => 'no_session'];
+                echo sprintf("%-6s %-42s BRAK SESJI%s", $user->id, $user->username, PHP_EOL);
+                continue;
+            }
+
+            // The SDK still calls curl_close(), deprecated in PHP 8.5, and Yii
+            // turns that into an exception on any php.ini that reports it.
+            $previousReporting = error_reporting();
+            error_reporting($previousReporting & ~E_DEPRECATED);
+
+            try {
+                $result = ApiClient::getClient($session)->GraphQL->post('{ shop { name } }');
+                $name = $result['data']['shop']['name'] ?? '';
+
+                $report['ok']++;
+                $report['shops'][] = ['id' => $user->id, 'shop' => $user->username, 'status' => 'ok', 'name' => $name];
+                echo sprintf("%-6s %-42s OK  %s%s", $user->id, $user->username, $name, PHP_EOL);
+            } catch (\Throwable $e) {
+                $message = $e->getMessage();
+
+                $report['unreachable']++;
+                $report['shops'][] = [
+                    'id'     => $user->id,
+                    'shop'   => $user->username,
+                    'status' => 'unreachable',
+                    'error'  => $message,
+                ];
+
+                echo sprintf("%-6s %-42s NIEDOSTĘPNY: %s%s", $user->id, $user->username, $message, PHP_EOL);
+
+                if ($fix) {
+                    self::disableAllFeeds($user, $message);
+                }
+            } finally {
+                error_reporting($previousReporting);
+            }
+        }
+
+        return $report;
+    }
+
+    private static function disableAllFeeds(User $user, string $message): void
+    {
+        foreach ([XmlFeed::PRODUCT, XmlFeed::CUSTOMER, XmlFeed::ORDER] as $type) {
+            $reason = sprintf('%s (check-shops, %s)', $message, date('Y-m-d H:i'));
+
+            if (DisabledFeeds::disable($user->id, $type, $reason, DisabledFeeds::BY_AUTO)) {
+                echo "       -> wyłączono feed {$type}" . PHP_EOL;
+            }
+        }
     }
 
     public static function getLastestQueue(string $type, array $config = [])
@@ -292,12 +418,14 @@ class XmlGeneratorService
                 echo "[{$type}] FINISHED — setting executed status" . PHP_EOL;
                 $queue->setExecutedStatus();
                 $queue->setCountErrors(0);
+                self::noteSuccess($type, $user->id);
                 return ExitCode::OK;
             }
 
             echo "[{$type}] Partial — setting pending for next run" . PHP_EOL;
             $queue->setPendingStatus();
             $queue->setCountErrors(0);
+            self::noteSuccess($type, $user->id);
 
             return ExitCode::OK;
         } catch (Exception $e) {
@@ -322,6 +450,10 @@ class XmlGeneratorService
                 $queue->setErrorStatus($message);
 
                 echo "[{$type}] Gave up after {$attempts} attempts ({$kind}) — queue parked in ERROR" . PHP_EOL;
+
+                if ($kind === self::ERROR_PERMANENT) {
+                    self::handlePermanentFailure($type, $user, $message);
+                }
             }
 
             return ExitCode::UNSPECIFIED_ERROR;
