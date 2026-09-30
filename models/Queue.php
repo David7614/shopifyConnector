@@ -553,6 +553,54 @@ class Queue extends \yii\db\ActiveRecord
      * @param array $parameters
      * @return array
      */
+    /**
+     * Display labels for the error kinds recorded by recordFailure(), so the
+     * admin views do not each keep their own copy.
+     *
+     * @return array<string,array{0:string,1:string}> kind => [label, colour]
+     */
+    public static function errorKindLabels(): array
+    {
+        return [
+            'permanent' => ['Trwały', '#b71c1c'],
+            'transient' => ['Przejściowy', '#ef6c00'],
+            'unknown'   => ['Nieznany', '#616161'],
+        ];
+    }
+
+    /**
+     * Stores why the last attempt failed and how it was classified, so the
+     * admin panel can tell a dead shop apart from a passing network glitch.
+     */
+    public function recordFailure(string $message, string $kind)
+    {
+        $parameters = $this->additionalParameters;
+
+        if (!is_array($parameters)) {
+            $parameters = [];
+        }
+
+        $parameters['error_msg']  = $message;
+        $parameters['error_kind'] = $kind;
+        $parameters['error_at']   = date('Y-m-d H:i:s');
+
+        $this->additionalParameters = $parameters;
+
+        return $this->save(false);
+    }
+
+    /**
+     * Pushes the next attempt into the future. A failed queue goes back to
+     * PENDING, and the loop picks whatever is due by the earliest date - so
+     * without moving that date, the very next iteration retries the same row.
+     */
+    public function deferBy(int $seconds)
+    {
+        $this->next_integration_date = date('Y-m-d H:i:s', time() + max(0, $seconds));
+
+        return $this->save(false);
+    }
+
     public static function stripFetchState($parameters)
     {
         if (!is_array($parameters)) {

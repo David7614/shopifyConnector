@@ -19,6 +19,104 @@ class XmlGeneratorService
      */
     const MAX_CONSECUTIVE_FAILURES = 10;
 
+    /** No point retrying: the shop or the credentials are gone. */
+    const ERROR_PERMANENT = 'permanent';
+    /** Worth retrying: network, throttling, upstream hiccup. */
+    const ERROR_TRANSIENT = 'transient';
+    /** Anything we have not learned to recognize yet. */
+    const ERROR_UNKNOWN = 'unknown';
+
+    /** Attempts before a queue is parked in ERROR, per error kind. */
+    const MAX_ATTEMPTS_PERMANENT = 3;
+    const MAX_ATTEMPTS_DEFAULT = 30;
+
+    /** Backoff bounds, in seconds. */
+    const BACKOFF_BASE_SECONDS = 300;
+    const BACKOFF_MAX_SECONDS = 21600;
+
+    /**
+     * Sorts a failure message into something the retry policy can act on.
+     *
+     * Matching is on substrings of what Shopify and the HTTP layer actually
+     * say, because that is all we get - there are no error codes to key on.
+     */
+    public static function classifyError(string $message): string
+    {
+        $haystack = mb_strtolower($message);
+
+        $permanent = [
+            'unavailable shop',
+            'shop is unavailable',
+            'invalid api key',
+            'unauthorized',
+            'access denied',
+            'forbidden',
+            'no session',
+            '401',
+            '403',
+            '404',
+        ];
+
+        foreach ($permanent as $needle) {
+            if (mb_strpos($haystack, $needle) !== false) {
+                return self::ERROR_PERMANENT;
+            }
+        }
+
+        $transient = [
+            'timed out',
+            'timeout',
+            'could not resolve',
+            'connection',
+            'throttled',
+            'too many requests',
+            'service unavailable',
+            'bad gateway',
+            'gateway timeout',
+            'internal server error',
+            '429',
+            '500',
+            '502',
+            '503',
+            '504',
+        ];
+
+        foreach ($transient as $needle) {
+            if (mb_strpos($haystack, $needle) !== false) {
+                return self::ERROR_TRANSIENT;
+            }
+        }
+
+        return self::ERROR_UNKNOWN;
+    }
+
+    /** How many attempts a queue of this error kind gets before it is parked. */
+    public static function maxAttemptsFor(string $kind): int
+    {
+        return $kind === self::ERROR_PERMANENT
+            ? self::MAX_ATTEMPTS_PERMANENT
+            : self::MAX_ATTEMPTS_DEFAULT;
+    }
+
+    /**
+     * Exponential backoff, capped. Without it a failing queue is retried on
+     * every single iteration, so one broken shop burns the whole run and races
+     * through its 30 attempts in seconds.
+     */
+    public static function backoffSeconds(int $attempts): int
+    {
+        if ($attempts < 1) {
+            $attempts = 1;
+        }
+
+        // Cap the exponent before shifting, so a long-failing queue cannot
+        // overflow its way back to a tiny delay.
+        $exponent = min($attempts - 1, 12);
+        $delay = self::BACKOFF_BASE_SECONDS * (2 ** $exponent);
+
+        return (int) min($delay, self::BACKOFF_MAX_SECONDS);
+    }
+
     /**
      * Decides whether a failed iteration should end the loop.
      *
@@ -178,7 +276,11 @@ class XmlGeneratorService
 
             if (!$generated) {
                 $queue->setErrorStatus();
-                throw new Exception('Cannot generate ' . $type . ' feed. Cannot save file');
+                // The feed signals failure with a bare status code, so prefer
+                // whatever it recorded as the actual reason.
+                throw new Exception(
+                    $xmlGenerator->getLastError() ?: 'Cannot generate ' . $type . ' feed. Cannot save file'
+                );
             }
 
             if (isset($config['forcePage'])) {
@@ -199,13 +301,27 @@ class XmlGeneratorService
 
             return ExitCode::OK;
         } catch (Exception $e) {
-            echo "[{$type}] EXCEPTION: " . $e->getMessage() . PHP_EOL;
-            $queue->raiseCountErrors();
+            $message = $e->getMessage();
+            $kind = self::classifyError($message);
 
-            if ($queue->getCountErrors() < 30) {
+            echo "[{$type}] EXCEPTION ({$kind}): {$message}" . PHP_EOL;
+
+            $queue->raiseCountErrors();
+            $attempts = $queue->getCountErrors();
+            $maxAttempts = self::maxAttemptsFor($kind);
+
+            $queue->recordFailure($message, $kind);
+
+            if ($attempts < $maxAttempts) {
+                $delay = self::backoffSeconds($attempts);
                 $queue->setPendingStatus();
+                $queue->deferBy($delay);
+
+                echo "[{$type}] Attempt {$attempts}/{$maxAttempts} — retrying in " . round($delay / 60) . " min" . PHP_EOL;
             } else {
-                $queue->setErrorStatus($e->getMessage());
+                $queue->setErrorStatus($message);
+
+                echo "[{$type}] Gave up after {$attempts} attempts ({$kind}) — queue parked in ERROR" . PHP_EOL;
             }
 
             return ExitCode::UNSPECIFIED_ERROR;

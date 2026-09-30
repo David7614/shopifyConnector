@@ -308,6 +308,8 @@ class ProductFeed extends XmlFeed
 
             return $result['data']['productsCount']['count'];
         } catch (Exception $e) {
+            echo "[ProductFeed] getAllItemsCount API error: " . $e->getMessage() . PHP_EOL;
+            $this->setLastError($e->getMessage());
             return null;
         }
     }
@@ -663,6 +665,8 @@ class ProductFeed extends XmlFeed
 
             return ['status' => 'success', 'paginationInfo' => $pageInfo, 'products' => $products];
         } catch (Exception $e) {
+            echo "[ProductFeed] fetch API error: " . $e->getMessage() . PHP_EOL;
+            $this->setLastError($e->getMessage());
             return ['status' => 'fail', 'message' => $e->getMessage()];
         }
     }

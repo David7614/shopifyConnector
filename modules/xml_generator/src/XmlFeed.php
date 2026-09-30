@@ -59,6 +59,31 @@ class XmlFeed implements FeedGenerator
     protected $_queue;
 
     /**
+     * Why the last run failed, in the words of whatever actually failed - the
+     * Shopify API message, most of the time. Feeds signal failure by returning
+     * STATUS_FAIL, which says nothing on its own, so without this the caller
+     * can only report a generic "cannot save file".
+     *
+     * @var string|null
+     */
+    protected $_lastError;
+
+    public function setLastError($message)
+    {
+        $this->_lastError = $message !== null && $message !== '' ? (string) $message : null;
+
+        return $this;
+    }
+
+    /**
+     * @return string|null
+     */
+    public function getLastError()
+    {
+        return $this->_lastError;
+    }
+
+    /**
      * @param null $what
      * @return int
      *
@@ -95,12 +120,18 @@ class XmlFeed implements FeedGenerator
                 throw new Exception('Cannot create feed. Invaild feed type');
         }
 
-        return $feedClass
+        $feedClass
             ->setType($this->_type)
             ->setUser($this->_queue->getCurrentUser())
-            ->setQueue($this->_queue)
-            // ->generate($what);
-            ->generate($processType);
+            ->setQueue($this->_queue);
+
+        $result = $feedClass->generate($processType);
+
+        // The concrete feed is local to this method, so its failure reason has
+        // to be carried over before it goes out of scope.
+        $this->setLastError($feedClass->getLastError());
+
+        return $result;
     }
 
     /**

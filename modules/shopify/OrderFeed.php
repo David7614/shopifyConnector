@@ -322,6 +322,8 @@ class OrderFeed extends XmlFeed
             $result = $this->client->GraphQL->post($graphQL);
             return $result['data']['ordersCount']['count'];
         } catch (Exception $e) {
+            echo "[OrderFeed] getAllItemsCount API error: " . $e->getMessage() . PHP_EOL;
+            $this->setLastError($e->getMessage());
             return null;
         }
     }
@@ -553,6 +555,8 @@ class OrderFeed extends XmlFeed
 
             return ['status' => 'success', 'paginationInfo' => $pageInfo, 'orders' => $items];
         } catch (Exception $e) {
+            echo "[OrderFeed] fetchItems API error: " . $e->getMessage() . PHP_EOL;
+            $this->setLastError($e->getMessage());
             return ['status' => 'fail', 'message' => $e->getMessage()];
         }
     }

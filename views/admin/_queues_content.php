@@ -220,13 +220,20 @@ $statusLabel = [
     <?php foreach ($errors as $item):
         $params = $item->getAdditionalParameters();
         $errMsg = $params['error_msg'] ?? '—';
+        $errKind = $params['error_kind'] ?? null;
+        $kindLabel = \app\models\Queue::errorKindLabels();
     ?>
     <tr>
         <td style="color:#bbb;font-size:11px;"><?= $item->id ?></td>
         <td><?= $userName($item->current_integrate_user) ?></td>
         <td><span class="type-chip err"><?= Html::encode($typeLabel[$item->integration_type] ?? $item->integration_type) ?></span></td>
         <td title="<?= Html::encode($item->finished_at) ?>"><?= $timeDiff($item->finished_at) ?></td>
-        <td style="color:#c62828; max-width:360px;"><?= Html::encode($errMsg) ?></td>
+        <td style="color:#c62828; max-width:360px;">
+            <?php if ($errKind !== null && isset($kindLabel[$errKind])): ?>
+                <span style="display:inline-block;padding:1px 6px;margin-right:6px;border-radius:3px;font-size:10px;color:#fff;background:<?= $kindLabel[$errKind][1] ?>;"><?= Html::encode($kindLabel[$errKind][0]) ?></span>
+            <?php endif ?>
+            <?= Html::encode($errMsg) ?>
+        </td>
         <td>
             <?= Html::a('Kolejka', Url::to(['admin/view', 'id' => $item->current_integrate_user]), ['class' => 'btn btn-xs btn-danger']) ?>
             <?= Html::beginForm(Url::to(['admin/reset-queue']), 'post', ['style' => 'display:inline']) ?>

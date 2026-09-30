@@ -126,9 +126,36 @@ $statusLabels = [
             <td style="font-size:12px; color:#666;"><?= $q->executed_at ?></td>
             <td style="font-size:12px; color:#666;"><?= $q->finished_at ?></td>
             <td style="font-size:12px; color:#666;"><?= $q->next_integration_date ?></td>
-            <td>
-                <?php $params = $q->getAdditionalParameters(); ?>
-                <?= $params ? '<small style="color:#999;">' . Html::encode(json_encode($params)) . '</small>' : '—' ?>
+            <td style="max-width:420px;">
+                <?php
+                $params  = $q->getAdditionalParameters() ?: [];
+                $errMsg  = $params['error_msg'] ?? null;
+                $errKind = $params['error_kind'] ?? null;
+                $errAt   = $params['error_at'] ?? null;
+                $kinds   = Queue::errorKindLabels();
+
+                // The failure reason is the one thing worth reading here, so it
+                // gets pulled out of the raw dump. The cursor is long base64
+                // noise, useful only as "present or not".
+                $rest = $params;
+                unset($rest['error_msg'], $rest['error_kind'], $rest['error_at']);
+
+                if (!empty($rest['endCursor']) && is_string($rest['endCursor'])) {
+                    $rest['endCursor'] = substr($rest['endCursor'], 0, 10) . '...';
+                }
+                ?>
+                <?php if ($errMsg !== null): ?>
+                    <div style="color:#c62828; margin-bottom:3px;">
+                        <?php if ($errKind !== null && isset($kinds[$errKind])): ?>
+                            <span style="display:inline-block; padding:1px 6px; border-radius:3px; font-size:10px; color:#fff; background:<?= $kinds[$errKind][1] ?>;"><?= Html::encode($kinds[$errKind][0]) ?></span>
+                        <?php endif ?>
+                        <?= Html::encode($errMsg) ?>
+                        <?php if ($errAt !== null): ?>
+                            <small style="color:#999;">(<?= Html::encode($errAt) ?>)</small>
+                        <?php endif ?>
+                    </div>
+                <?php endif ?>
+                <?= $rest ? '<small style="color:#999;">' . Html::encode(json_encode($rest)) . '</small>' : ($errMsg === null ? '—' : '') ?>
             </td>
             <td>
                 <?= Html::beginForm(Url::toRoute(['admin/reset-queue']), 'post', ['style' => 'display:inline']) ?>

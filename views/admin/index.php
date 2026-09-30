@@ -78,9 +78,21 @@ $this->title = 'Użytkownicy';
                 </div>
             </td>
             <td>
-                <?php $errCount = $s['errors'] ?? 0; ?>
+                <?php
+                $errCount = $s['errors'] ?? 0;
+                $lastErr  = $s['lastError'] ?? null;
+                $kinds    = \app\models\Queue::errorKindLabels();
+                ?>
                 <?php if ($errCount > 0): ?>
                     <span style="background:#e53935; color:#fff; padding:2px 7px; border-radius:10px; font-size:12px;"><?= $errCount ?></span>
+                    <?php if ($lastErr !== null): ?>
+                        <div style="margin-top:3px; font-size:11px; color:#c62828; max-width:280px;" title="<?= Html::encode($lastErr['msg']) ?>">
+                            <?php if ($lastErr['kind'] !== null && isset($kinds[$lastErr['kind']])): ?>
+                                <span style="display:inline-block; padding:0 5px; border-radius:3px; font-size:10px; color:#fff; background:<?= $kinds[$lastErr['kind']][1] ?>;"><?= Html::encode($kinds[$lastErr['kind']][0]) ?></span>
+                            <?php endif ?>
+                            <?= Html::encode(mb_strimwidth($lastErr['msg'], 0, 60, '...')) ?>
+                        </div>
+                    <?php endif ?>
                 <?php else: ?>
                     <span style="color:#4caf50;">✔</span>
                 <?php endif ?>

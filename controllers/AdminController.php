@@ -72,6 +72,7 @@ class AdminController extends Controller
                 'errors' => Queue::find()
                     ->where(['current_integrate_user' => $user->id, 'integrated' => Queue::ERROR])
                     ->count(),
+                'lastError' => $this->lastErrorFor($user->id),
             ];
         }
 
@@ -512,6 +513,35 @@ class AdminController extends Controller
             ? 'Zmieniono źródło kategorii - zakolejkowano pełne ponowne pobranie produktów (start dziś 01:00).'
             : 'Zmieniono źródło kategorii - pełne pobranie wykona najbliższe zadanie produktowe, które już czeka w kolejce.'
         );
+    }
+
+    /**
+     * Most recent failure reason for a user, so the user list can say what is
+     * wrong instead of only how many queues are broken.
+     *
+     * @return array{msg:string,kind:?string}|null
+     */
+    private function lastErrorFor(int $userId)
+    {
+        $queue = Queue::find()
+            ->where(['current_integrate_user' => $userId, 'integrated' => Queue::ERROR])
+            ->orderBy(['finished_at' => SORT_DESC, 'id' => SORT_DESC])
+            ->one();
+
+        if (!$queue) {
+            return null;
+        }
+
+        $params = $queue->getAdditionalParameters();
+
+        if (!is_array($params) || empty($params['error_msg'])) {
+            return null;
+        }
+
+        return [
+            'msg'  => (string) $params['error_msg'],
+            'kind' => $params['error_kind'] ?? null,
+        ];
     }
 
     private function findUser(int $id): User
