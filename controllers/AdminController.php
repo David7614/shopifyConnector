@@ -155,10 +155,19 @@ class AdminController extends Controller
             }
         Query;
 
+        // phpclassic/php-shopify 1.2.15 still calls curl_close(), deprecated in
+        // PHP 8.5. Yii turns any notice covered by error_reporting() into an
+        // exception, so on a php.ini that reports deprecations the SDK throws
+        // after a perfectly successful request. Muted only around the SDK call.
+        $previousReporting = error_reporting();
+        error_reporting($previousReporting & ~E_DEPRECATED);
+
         try {
             $result = ApiClient::getClient($session)->GraphQL->post($graphQL);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return ['error' => 'Błąd zapytania do Shopify: ' . $e->getMessage()];
+        } finally {
+            error_reporting($previousReporting);
         }
 
         $nodes = $result['data']['products']['nodes'] ?? [];
