@@ -147,9 +147,23 @@ class Product
             if (!$this->isCategoryFallbackEnabled()) {
                 return '';
             }
+
+            // Falling back onto a node that only says "no category" would defeat
+            // the point of the fallback, so here it counts as no value at all.
+            // Shops left on the taxonomy source keep getting it as a label,
+            // exactly as before this setting existed.
+            if ($this->isTaxonomyUncategorized()) {
+                return '';
+            }
         }
 
         return $this->getCategoryFromTaxonomy();
+    }
+
+    private function isTaxonomyUncategorized(): bool
+    {
+        return isset($this->product['category']['id'])
+            && $this->product['category']['id'] === self::TAXONOMY_UNCATEGORIZED_GID;
     }
 
     protected function getCategorySource(): string
@@ -182,10 +196,6 @@ class Product
         }
 
         if (isset($this->product['category']['id'])) {
-            if ($this->product['category']['id'] === self::TAXONOMY_UNCATEGORIZED_GID) {
-                return '';
-            }
-
             $result = $this->resolveTaxonomyCategory($this->product['category']['id']);
 
             if ($result) {

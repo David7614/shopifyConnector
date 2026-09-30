@@ -85,14 +85,27 @@ class ProductCategoryTest extends Unit
         $this->assertSame('Karma dla psów', $this->categoryOf($product));
     }
 
-    public function testUncategorizedTaxonomyNodeIsTreatedAsEmpty()
+    /**
+     * Shops on the taxonomy source must keep the behaviour they had before this
+     * setting existed: Shopify's "no category" node is a label like any other.
+     */
+    public function testUncategorizedTaxonomyNodeKeepsItsLabelOnTaxonomySource()
     {
         $product = $this->makeProduct(
             ['category' => $this->taxonomyNode(Product::TAXONOMY_UNCATEGORIZED_GID, 'Bez kategorii')],
             ['product_category_source' => Product::CATEGORY_SOURCE_TAXONOMY]
         );
 
-        $this->assertSame('', $this->categoryOf($product));
+        $this->assertSame('Bez kategorii', $this->categoryOf($product));
+    }
+
+    public function testUncategorizedTaxonomyNodeKeepsItsLabelWhenNothingIsConfigured()
+    {
+        $product = $this->makeProduct(
+            ['category' => $this->taxonomyNode(Product::TAXONOMY_UNCATEGORIZED_GID, 'Bez kategorii')]
+        );
+
+        $this->assertSame('Bez kategorii', $this->categoryOf($product));
     }
 
     public function testMissingTaxonomyNodeYieldsEmpty()
