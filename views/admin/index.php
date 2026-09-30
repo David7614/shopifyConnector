@@ -62,10 +62,23 @@ $this->title = 'Użytkownicy';
                 <?php endif ?>
             </td>
             <td>
-                <?php if ($user->active): ?>
-                    <span style="color:#2e7d32;">&#9679;</span> <span style="color:#2e7d32;">Aktywny</span>
-                <?php else: ?>
+                <?php $disabled = $s['disabled'] ?? []; ?>
+                <?php if (!$user->active): ?>
                     <span style="color:#ccc;">&#9679;</span> <span style="color:#999;">Nieaktywny</span>
+                <?php elseif (count($disabled) >= 3): ?>
+                    <span style="color:#b71c1c;">&#9679;</span> <span style="color:#b71c1c;">Feedy wyłączone</span>
+                <?php else: ?>
+                    <span style="color:#2e7d32;">&#9679;</span> <span style="color:#2e7d32;">Aktywny</span>
+                <?php endif ?>
+                <?php if ($disabled): ?>
+                    <div style="margin-top:3px;">
+                        <?php foreach ($disabled as $type => $row): ?>
+                            <span style="display:inline-block; padding:0 5px; margin-right:3px; border-radius:3px; font-size:10px; color:#fff; background:#b71c1c;"
+                                  title="<?= Html::encode($row->reason ?: 'bez podanego powodu') ?>">
+                                <?= Html::encode(strtoupper(substr($type, 0, 1))) ?> OFF
+                            </span>
+                        <?php endforeach ?>
+                    </div>
                 <?php endif ?>
             </td>
             <td style="font-size:12px; color:#666;"><?= Html::encode($s['lastFinished'] ?? '—') ?></td>

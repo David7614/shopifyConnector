@@ -58,6 +58,12 @@ class AdminController extends Controller
     {
         $users = User::find()->orderBy(['id' => SORT_ASC])->all();
 
+        // One query for everyone, rather than three per user in the loop below.
+        $disabledByUser = [];
+        foreach (DisabledFeeds::find()->all() as $disabled) {
+            $disabledByUser[$disabled->user_id][$disabled->integration_type] = $disabled;
+        }
+
         $summary = [];
         foreach ($users as $user) {
             $lastQueue = Queue::find()
@@ -76,6 +82,7 @@ class AdminController extends Controller
                     ->where(['current_integrate_user' => $user->id, 'integrated' => Queue::ERROR])
                     ->count(),
                 'lastError' => $this->lastErrorFor($user->id),
+                'disabled'  => $disabledByUser[$user->id] ?? [],
             ];
         }
 
