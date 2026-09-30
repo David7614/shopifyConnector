@@ -545,6 +545,56 @@ class Queue extends \yii\db\ActiveRecord
         return $current_date->format('Y-m-d H:i:s');
     }
 
+    /**
+     * Drops the cursor state Phase 1 uses to resume pagination, leaving every
+     * other parameter alone - `objects_done` in particular, since that is what
+     * tells the two phases apart.
+     *
+     * @param array $parameters
+     * @return array
+     */
+    public static function stripFetchState($parameters)
+    {
+        if (!is_array($parameters)) {
+            return [];
+        }
+
+        unset($parameters['endCursor'], $parameters['hasNextPage']);
+
+        return $parameters;
+    }
+
+    /**
+     * Clears the resume state of a user's unfinished queues of one type, so the
+     * next run fetches from the beginning instead of continuing after the cursor
+     * left over from the previous pass. Without this, a queue that already read
+     * to the end of the catalogue would fetch nothing and still finish as
+     * EXECUTED - a silent no-op.
+     *
+     * @return int Number of queue rows updated.
+     */
+    public static function clearFetchStateForType(string $type, int $user_id): int
+    {
+        $queues = self::find()
+            ->where(['current_integrate_user' => $user_id, 'integration_type' => $type])
+            ->andWhere(['in', 'integrated', [self::PENDING, self::RUNNING]])
+            ->all();
+
+        $updated = 0;
+
+        foreach ($queues as $queue) {
+            $queue->setAdditionalParameters(self::stripFetchState($queue->getAdditionalParameters()));
+            $queue->page     = 0;
+            $queue->max_page = 0;
+
+            if ($queue->save(false)) {
+                $updated++;
+            }
+        }
+
+        return $updated;
+    }
+
     public function getAdditionalParameters(){
         return unserialize($this->parameters);
     }

@@ -362,11 +362,12 @@ class AdminController extends Controller
         }
 
         IntegrationData::resetIntegrationFlags($type, $user->id);
-        $queued = Queue::ensureQueuedForType($type, $user->id);
+        $cleared = Queue::clearFetchStateForType($type, $user->id);
+        $queued  = Queue::ensureQueuedForType($type, $user->id);
 
         Yii::$app->session->addFlash('success', $queued
             ? "Reset integracji „{$type}” wykonany — dodano nowe zadania do kolejki (start dziś 01:00)."
-            : "Reset integracji „{$type}” wykonany — w kolejce są już zadania tego typu, nowych nie dodano."
+            : "Reset integracji „{$type}” wykonany — w kolejce są już zadania tego typu ({$cleared} wyczyszczono ze stanu pobierania), nowych nie dodano."
         );
 
         return $this->redirect(Url::toRoute(['admin/view', 'id' => $user->id]));
@@ -504,6 +505,7 @@ class AdminController extends Controller
         $user->getConfig()->set('product_category_fallback_taxonomy', $fallback);
 
         IntegrationData::resetIntegrationFlags(XmlFeed::PRODUCT, $user->id);
+        Queue::clearFetchStateForType(XmlFeed::PRODUCT, $user->id);
         $queued = Queue::ensureQueuedForType(XmlFeed::PRODUCT, $user->id);
 
         Yii::$app->session->addFlash('success', $queued
