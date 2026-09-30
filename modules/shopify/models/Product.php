@@ -14,6 +14,17 @@ class Product
     const PARAMETER_TYPE_SINGLE = 'single';
     const PARAMETER_TYPE_MULTI = 'multi';
 
+    /** Where CATEGORYTEXT is taken from; configured per shop in user_config. */
+    const CATEGORY_SOURCE_TAXONOMY = 'taxonomy';
+    const CATEGORY_SOURCE_PRODUCT_TYPE = 'product_type';
+
+    /**
+     * Shopify's explicit "no category" node. Its name is localized
+     * ("Uncategorized" in en, "Bez kategorii" in pl), so it has to be
+     * recognized by GID, not by the resolved label.
+     */
+    const TAXONOMY_UNCATEGORIZED_GID = 'gid://shopify/TaxonomyCategory/na';
+
     private $product;
 
     /**
@@ -21,10 +32,27 @@ class Product
      */
     private $user;
 
+    /**
+     * User::getConfig() builds a fresh model and hits the database on every
+     * get(), so values read per product are memoized here.
+     *
+     * @var array<string,mixed>
+     */
+    private $configCache = [];
+
     public function __construct($product, $user)
     {
         $this->product = $product;
         $this->user = $user;
+    }
+
+    private function getConfigValue(string $key)
+    {
+        if (!array_key_exists($key, $this->configCache)) {
+            $this->configCache[$key] = $this->user->config->get($key);
+        }
+
+        return $this->configCache[$key];
     }
 
     private function getId()
@@ -100,13 +128,64 @@ class Product
         return $this->product['vendor'];
     }
 
-    private function getCategory()
+    /**
+     * Resolves CATEGORYTEXT from the source configured for this shop.
+     *
+     * The taxonomy branch is evaluated lazily: resolving it parses the whole
+     * categories.txt file, so shops using productType never pay for it unless
+     * the fallback actually kicks in.
+     */
+    protected function getCategory()
+    {
+        if ($this->getCategorySource() === self::CATEGORY_SOURCE_PRODUCT_TYPE) {
+            $productType = $this->getCategoryFromProductType();
+
+            if ($productType !== '') {
+                return $productType;
+            }
+
+            if (!$this->isCategoryFallbackEnabled()) {
+                return '';
+            }
+        }
+
+        return $this->getCategoryFromTaxonomy();
+    }
+
+    protected function getCategorySource(): string
+    {
+        return $this->getConfigValue('product_category_source') === self::CATEGORY_SOURCE_PRODUCT_TYPE
+            ? self::CATEGORY_SOURCE_PRODUCT_TYPE
+            : self::CATEGORY_SOURCE_TAXONOMY;
+    }
+
+    protected function isCategoryFallbackEnabled(): bool
+    {
+        return (bool) $this->getConfigValue('product_category_fallback_taxonomy');
+    }
+
+    /** Public so the admin panel can preview both sources side by side. */
+    public function getCategoryFromProductType(): string
+    {
+        if (!isset($this->product['productType'])) {
+            return '';
+        }
+
+        return trim((string) $this->product['productType']);
+    }
+
+    /** Public so the admin panel can preview both sources side by side. */
+    public function getCategoryFromTaxonomy(): string
     {
         if (!$this->product['category'] || !$this->product['category']['name']) {
             return '';
         }
 
         if (isset($this->product['category']['id'])) {
+            if ($this->product['category']['id'] === self::TAXONOMY_UNCATEGORIZED_GID) {
+                return '';
+            }
+
             $result = $this->resolveTaxonomyCategory($this->product['category']['id']);
 
             if ($result) {
@@ -658,7 +737,7 @@ class Product
 
     function resolveTaxonomyValue(string $label, string $valueGid) 
     {
-        $lang = $this->user->config->get("data_language") ?? 'en';
+        $lang = $this->getConfigValue('data_language') ?? 'en';
         $file = 'attribute_values.json';
 
         $filePath = __DIR__ . '/taxonomy/' . $lang . '/' . $file;
@@ -668,7 +747,7 @@ class Product
 
     function resolveTaxonomyValues(string $attributeHandle, array $valueGids) 
     {
-        $lang = $this->user->config->get("data_language") ?? 'en';
+        $lang = $this->getConfigValue('data_language') ?? 'en';
         $file = 'attributes.json';
 
         $filePath = __DIR__ . '/taxonomy/' . $lang . '/' . $file;
@@ -678,7 +757,7 @@ class Product
 
     function resolveTaxonomyCategory(string $categoryGid) 
     {
-        $lang = $this->user->config->get("data_language") ?? 'en';
+        $lang = $this->getConfigValue('data_language') ?? 'en';
         $file = 'categories.txt';
 
         $filePath = __DIR__ . '/taxonomy/' . $lang . '/' . $file;

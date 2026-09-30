@@ -6,6 +6,8 @@ namespace app\controllers;
 use app\models\IntegrationData;
 use app\models\Queue;
 use app\models\User;
+use app\modules\shopify\ApiClient;
+use app\modules\shopify\models\Product as ShopifyProduct;
 use app\modules\xml_generator\src\XmlFeed;
 use app\services\FeedStorageService;
 use Yii;
@@ -102,6 +104,8 @@ class AdminController extends Controller
 
             $user->getConfig()->set('feed_enabled', (int) Yii::$app->request->post('feed_enabled', 1));
 
+            $this->saveCategorySourceSettings($user);
+
             Yii::$app->session->addFlash('success', 'Ustawienia zapisane');
             return $this->redirect(Url::toRoute(['admin/dashboard', 'id' => $user->id]));
         }
@@ -118,6 +122,63 @@ class AdminController extends Controller
             'feedUrls'  => $feedUrls,
             'xmlCounts' => $xmlCounts,
         ]);
+    }
+
+    /**
+     * Read-only sample of what each category source would yield for this shop,
+     * so the source can be judged before paying for a full re-fetch.
+     */
+    public function actionPreviewCategories(int $id)
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+
+        $user = $this->findUser($id);
+
+        $session = $user->getSession();
+        if (!$session) {
+            return ['error' => 'Brak aktywnej sesji Shopify dla tego sklepu.'];
+        }
+
+        $graphQL = <<<Query
+            query {
+                products(first: 10) {
+                    nodes {
+                        id
+                        title
+                        productType
+                        category {
+                            id
+                            name
+                        }
+                    }
+                }
+            }
+        Query;
+
+        try {
+            $result = ApiClient::getClient($session)->GraphQL->post($graphQL);
+        } catch (\Exception $e) {
+            return ['error' => 'Błąd zapytania do Shopify: ' . $e->getMessage()];
+        }
+
+        $nodes = $result['data']['products']['nodes'] ?? [];
+
+        $rows = [];
+        foreach ($nodes as $node) {
+            $preview = new ShopifyProduct($node, $user);
+
+            $rows[] = [
+                'title'       => (string) ($node['title'] ?? ''),
+                'taxonomy'    => $preview->getCategoryFromTaxonomy(),
+                'productType' => $preview->getCategoryFromProductType(),
+            ];
+        }
+
+        return [
+            'source'   => (string) ($user->getConfig()->get('product_category_source') ?: ShopifyProduct::CATEGORY_SOURCE_TAXONOMY),
+            'fallback' => (int) $user->getConfig()->get('product_category_fallback_taxonomy'),
+            'rows'     => $rows,
+        ];
     }
 
     // -------------------------------------------------------------------------
@@ -398,6 +459,49 @@ class AdminController extends Controller
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Saves the per-shop category source. Changing either setting invalidates
+     * every CATEGORYTEXT already stored, so it forces a full product re-fetch:
+     * Phase 1 is incremental, and without this the existing products would keep
+     * their old category until someone touched them in Shopify.
+     */
+    private function saveCategorySourceSettings(User $user): void
+    {
+        $allowedSources = [
+            ShopifyProduct::CATEGORY_SOURCE_TAXONOMY,
+            ShopifyProduct::CATEGORY_SOURCE_PRODUCT_TYPE,
+        ];
+
+        $source = (string) Yii::$app->request->post('product_category_source', ShopifyProduct::CATEGORY_SOURCE_TAXONOMY);
+        if (!in_array($source, $allowedSources, true)) {
+            $source = ShopifyProduct::CATEGORY_SOURCE_TAXONOMY;
+        }
+
+        // The fallback only means anything when the chosen source can come up empty.
+        $fallback = $source === ShopifyProduct::CATEGORY_SOURCE_PRODUCT_TYPE
+            ? (int) Yii::$app->request->post('product_category_fallback_taxonomy', 0)
+            : 0;
+
+        $config          = $user->getConfig();
+        $currentSource   = $config->get('product_category_source') ?: ShopifyProduct::CATEGORY_SOURCE_TAXONOMY;
+        $currentFallback = (int) $config->get('product_category_fallback_taxonomy');
+
+        if ($currentSource === $source && $currentFallback === $fallback) {
+            return;
+        }
+
+        $user->getConfig()->set('product_category_source', $source);
+        $user->getConfig()->set('product_category_fallback_taxonomy', $fallback);
+
+        IntegrationData::resetIntegrationFlags(XmlFeed::PRODUCT, $user->id);
+        $queued = Queue::ensureQueuedForType(XmlFeed::PRODUCT, $user->id);
+
+        Yii::$app->session->addFlash('success', $queued
+            ? 'Zmieniono źródło kategorii - zakolejkowano pełne ponowne pobranie produktów (start dziś 01:00).'
+            : 'Zmieniono źródło kategorii - pełne pobranie wykona najbliższe zadanie produktowe, które już czeka w kolejce.'
+        );
+    }
 
     private function findUser(int $id): User
     {

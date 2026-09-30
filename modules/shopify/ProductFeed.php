@@ -375,6 +375,7 @@ class ProductFeed extends XmlFeed
                             totalInventory
                             hasOnlyDefaultVariant
                             vendor
+                            productType
                             category {
                                 id
                                 name
@@ -518,6 +519,7 @@ class ProductFeed extends XmlFeed
                             totalInventory
                             hasOnlyDefaultVariant
                             vendor
+                            productType
                             category {
                                 id
                                 name
